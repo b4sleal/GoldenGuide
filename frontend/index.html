@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GoldenGuide</title>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <style>
+        body { padding-top: 2rem; }
+
+        /* Header Styling */
+        .header-row {
+            display: flex;
+            align-items: center; /* Vertically center logo with text */
+            gap: 1rem;
+            margin-bottom: 0.5rem; /* Space between title-row and description */
+        }
+
+        /* Remove default margin from H1 so it aligns with logo */
+        .header-row h1 {
+            margin-bottom: 0;
+            color: #391E79;
+        }
+
+        /* Style the logo */
+        #logo {
+            height: 60px;
+            width: 60px;
+            object-fit: contain;
+        }
+
+        /* Ask Styling */
+        #submit-btn {
+            background-color: #391E79;
+            border-color: #391E79;
+        }
+        /* ChatBot Response Styling */
+        #answer-container { display: none; margin-top: 2rem; }
+        #answer-container.visible { display: block; }
+
+        #answer-content li {
+            list-style-type: disc;
+            margin-left: 20px;
+        }
+
+    </style>
+</head>
+<body>
+
+<main class="container">
+
+    <div>
+        <div class="header-row">
+            <img src="GoldenGuideLogo.png" alt="logo" id="logo">
+            <h1>GoldenGuide</h1>
+        </div>
+
+        <h3>Your new AI academic assistant for WLU</h3>
+    </div>
+
+    <article>
+        <textarea id="question" rows="4" placeholder="Ask a question... (e.g., What are the course requirements for Psychology?)"></textarea>
+        <button onclick="ask()" id="submit-btn">Ask GoldenGuide</button>
+        <em>Note: GoldenGuide can make mistakes! Always check the provided sources.</em>
+    </article>
+
+    <article id="answer-container">
+        <div id="answer-content"></div>
+    </article>
+</main>
+
+<script>
+    async function ask() {
+        const input = document.getElementById("question");
+        const btn = document.getElementById("submit-btn");
+        const container = document.getElementById("answer-container");
+        const content = document.getElementById("answer-content");
+
+        // Check if they even inputted anything
+        if (!input.value.trim()) return;
+
+        // UI Loading State
+        btn.setAttribute("aria-busy", "true");
+        btn.textContent = "Thinking...";
+        container.classList.remove("visible"); // Hide old results while loading
+
+        try {
+            const res = await fetch("/chatbot", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query: input.value })
+            });
+
+            const data = await res.json();
+
+            // Combine Answer + Sources into ONE Markdown string
+            let markdown = data.answer || "No answer received.";
+
+            if (data.sources && data.sources.length > 0) {
+                // Add a title, and each link in Markdown format
+                markdown += "\n\n---\n### 📚 Sources\n";
+                markdown += data.sources.map(url => `* <${url}>`).join("\n");
+            }
+
+            // Render everything at once
+            content.innerHTML = marked.parse(markdown);
+            container.classList.add("visible");
+        } catch (err) {
+            alert("Error connecting to server.");
+            console.error(err);
+        } finally {
+            // Reset Button
+            btn.setAttribute("aria-busy", "false");
+            btn.textContent = "Ask GoldenGuide";
+        }
+    }
+</script>
+
+</body>
+</html>

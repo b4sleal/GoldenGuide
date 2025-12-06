@@ -1,13 +1,30 @@
-import requests
-from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 from collections import defaultdict
 import os
 import json
+
 from backend.scraping.parser import get_sitemap_urls, scrape_page
 
-# Store scrapped pages
-def scrape_all_and_save(output_folder="scraped_pages"):
+# Choose which categories to scrape from the website
+CATEGORIES_TO_SCRAPE = [
+    "academics",
+    "student-life"
+    "wellness-and-recreation",
+    "work-leadership-and-volunteering",
+    "campus-services",
+    "programs",
+    "support-and-wellness",
+    "finances",
+    "home.html"
+]
+
+output_folder = "data/scraped_pages"
+
+def scrape_all_and_save():
+    """
+    Store scraped content in JSON files in the specified folder
+    Reduces the number of requests to the WLU website
+    """
     urls = get_sitemap_urls()
     category_contents = defaultdict(list)
 
@@ -15,11 +32,15 @@ def scrape_all_and_save(output_folder="scraped_pages"):
         # Determine top-level category
         parsed = urlparse(url)
         path = parsed.path.strip("/")
-        if not path:
-            continue  # skip root URL (no useful content)
+        if not path: continue  # skip root URL
         category = path.split("/")[0]
 
-        print(f"[{i}/{len(urls)}] Scraping: {url}")
+        # Skip categories not in our chosen list
+        if category not in CATEGORIES_TO_SCRAPE:
+            continue
+
+        print(f"[{i}/{len(urls)}] Scraping ({category}): {url}")
+
         text = scrape_page(url)
         if text:
             category_contents[category].append({
@@ -36,4 +57,7 @@ def scrape_all_and_save(output_folder="scraped_pages"):
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(pages, f, ensure_ascii=False, indent=2)
 
-    print(f"\n✅ Scraping complete. Saved {len(category_contents)} category files to '{output_folder}'.")
+    print(f"\nScraping complete. Saved {len(category_contents)} category files to '{output_folder}'.")
+
+if __name__ == "__main__":
+    scrape_all_and_save()
