@@ -1,0 +1,44 @@
+# OpenTelemetry Collector: receives traces from every GoldenGuide service and forwards them.
+#
+#   goldenguide-api / goldenguide-embedding --OTLP--> collector --OTLP--> Jaeger
+#
+# Services only know the collector's address. Swapping Jaeger for Grafana Tempo, AWS X-Ray
+# (via ADOT) or a hosted backend changes only the exporter below, not application code.
+# Logs do not pass through here: services write JSON to stdout and Alloy ships them to Loki
+# (see src/backend/shared/logging/configure.py for why).
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # First in the pipeline (recommended by the Collector docs): when memory is tight, refuse
+  # new data instead of crashing and losing everything already buffered.
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 20
+  # Group spans into batches to cut network calls to the backend.
+  batch: {}
+
+exporters:
+  # Jaeger accepts OTLP natively; plaintext is fine inside the private Docker network.
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+  # Prints a one-line summary per batch to the collector's own log, useful to confirm traffic.
+  # Kept at "basic": "detailed" printed every span, which Alloy then shipped to Loki as noise.
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/jaeger, debug]

@@ -1,0 +1,51 @@
+# Retrieval evaluation set: real student questions and the page(s) that answer them.
+#
+# A case passes when one of `expected_urls` is among the chunks the answer model receives (the first
+# `context_chunks`, see retrieval_eval.py). Add a case whenever a question retrieves the wrong page:
+# the set then guards every future retrieval change against that regression.
+#
+# Keep questions phrased the way students ask them, not the way pages are titled.
+cases:
+  - question: What are the important dates
+    expected_urls:
+      - https://students.wlu.ca/academics/support-and-advising/calendars-and-petitions/important-dates-and-deadlines.html
+
+  - question: when is the last day to register for fall courses
+    expected_urls:
+      - https://students.wlu.ca/academics/support-and-advising/calendars-and-petitions/important-dates-and-deadlines.html
+
+  - question: how do I apply to graduate
+    expected_urls:
+      - https://students.wlu.ca/academics/convocation/apply-to-graduate.html
+
+  - question: how much is tuition
+    expected_urls:
+      - https://students.wlu.ca/finances/tuition-and-fees/fees-breakdown/tuition-fees.html
+      - https://students.wlu.ca/finances/tuition-and-fees/index.html
+
+  - question: how do I get a parking permit
+    expected_urls:
+      - https://students.wlu.ca/campus-services/parking-and-transportation/student-parking-permits/index.html
+      - https://students.wlu.ca/campus-services/parking-and-transportation/student-parking-permits/non-residence-parking-permits.html
+
+  - question: how do I apply for OSAP
+    expected_urls:
+      - https://students.wlu.ca/finances/financial-aid/osap/index.html
+      - https://students.wlu.ca/finances/financial-aid/osap/apply-for-funding.html
+
+  - question: I need an exam accommodation for a religious holiday
+    expected_urls:
+      - https://students.wlu.ca/academics/support-and-advising/calendars-and-petitions/petitions-and-appeals/accommodations-for-religious-observances.html
+
+  - question: how do I register with accessible learning
+    expected_urls:
+      - https://students.wlu.ca/academics/support-and-advising/accessible-learning/index.html
+      - https://students.wlu.ca/academics/support-and-advising/accessible-learning/registration/step-2-alc-consultant.html
+
+  - question: how do I submit an academic petition
+    expected_urls:
+      - https://students.wlu.ca/academics/support-and-advising/calendars-and-petitions/petitions-and-appeals/index.html
+
+  - question: can I pay my tuition in installments
+    expected_urls:
+      - https://students.wlu.ca/finances/tuition-and-fees/payments/payment-plan.html

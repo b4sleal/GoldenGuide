@@ -1,0 +1,69 @@
+# Development overrides, layered on docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile all-dev --profile embedding-gpu up -d --build
+#
+# What changes compared with the runtime stack:
+#   - backend and provision use the Dockerfile `development` stage (toolchain + uv) instead of `runtime`.
+#   - The repo is bind-mounted at /app, so code edits are live without rebuilding the image.
+#   - start-python-service.sh runs `uv sync` at startup so the dev venv matches uv.lock.
+#   - The backend auto-reloads when files under src/backend change.
+#   - The embedding services run their runtime images with source mounted over them (see below).
+# Profiles, limits, ports, and networks are inherited from docker-compose.yml.
+#
+# Splitting services across machines in development works the same way: add `--profile tailnet`
+# on each machine (see the tailscale service in docker-compose.yml), e.g. an embedding-only laptop:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile tailnet --profile embedding-gpu up -d
+
+# backend and provision share one image and one volume holding both the uv cache and the venv
+# (paths set in the Dockerfile `development` stage). Same volume = same filesystem, so uv hardlinks
+# packages from its cache instead of copying them: each package is stored once. provision finishes before backend starts, so they never sync at once.
+x-development: &development
+  build:
+    target: development
+  image: goldenguide-python:development
+  environment:
+    # Throttle uv's parallelism so the startup sync doesn't hit the container's CPU/RAM caps.
+    UV_CONCURRENT_DOWNLOADS: ${UV_CONCURRENT_DOWNLOADS:-2}
+    UV_CONCURRENT_INSTALLS: ${UV_CONCURRENT_INSTALLS:-1}
+    UV_CONCURRENT_BUILDS: ${UV_CONCURRENT_BUILDS:-1}
+  volumes:
+    - .:/app
+    - python_dev_env:/home/app/.cache
+
+# Embedding dependencies (torch, CUDA) are large and rarely change, so dev reuses the runtime image
+# instead of a multi-GB dev venv; running dev and prod side by side stores them once. Mounted source
+# on PYTHONPATH takes precedence over the copy installed in the image. After changing an embedding
+# dependency group, rebuild the image (`up --build`).
+x-embedding-dev: &embedding-dev
+  volumes:
+    - ./src:/app/src:ro
+    - ./configs:/app/configs:ro
+  environment:
+    PYTHONPATH: /app/src
+
+services:
+  backend:
+    <<: *development
+    # dev-backend = the backend dependency group plus dev tools. --reload-dir limits file watching to backend code.
+    command: [start-python-service.sh, dev-backend, uvicorn, backend.main:app, --host, 0.0.0.0, --port, "8080", --ws, none, --reload, --reload-dir, /app/src/backend]
+
+  provision:
+    <<: *development
+    # Same group as backend so both share one venv.
+    command: [start-python-service.sh, dev-backend, python, -m, backend.core.startup.provision]
+
+  # Model weights stay in the base file's /models volume.
+  local-embedding-gpu: *embedding-dev
+
+  local-embedding-cpu: *embedding-dev
+
+  # Serve the UI straight from source: refresh the browser to see changes.
+  frontend:
+    volumes:
+      - ./src/frontend:/usr/share/nginx/html:ro
+
+  db-bootstrap:
+    # The test database is created only for development, never in the runtime configuration.
+    command: [psql, --host=postgres, "--username=${DB__POSTGRES__USER:-}", --dbname=postgres, --set=ON_ERROR_STOP=1, "--set=databases=${DB__POSTGRES__DATABASE:-goldenguide},goldenguide_test", --file=/bootstrap.sql]
+
+volumes:
+  python_dev_env:

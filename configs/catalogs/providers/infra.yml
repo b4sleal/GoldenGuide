@@ -1,0 +1,46 @@
+catalog:
+  providers:
+    blob_storage:
+      minio_app:
+        provider: minio
+        host: ${secrets:BLOB_STORAGE__MINIO__HOST,minio}
+        port: ${secrets:BLOB_STORAGE__MINIO__PORT,'9000'}
+        secure: ${secrets:BLOB_STORAGE__MINIO__SECURE,'false'}
+        access_key: ${secrets:BLOB_STORAGE__MINIO__ACCESS_KEY}
+        secret_key: ${secrets:BLOB_STORAGE__MINIO__SECRET_KEY}
+        bucket: goldenguide
+#      s3_feedback:
+#        provider: s3
+#        bucket: ...
+#        region: ...
+
+    db:
+      postgres_goldenguide:
+        provider: postgres
+        driver: postgresql+asyncpg
+        host: ${secrets:DB__POSTGRES__HOST,postgres}
+        port: ${secrets:DB__POSTGRES__PORT,'5432'}
+        user: ${secrets:DB__POSTGRES__USER}
+        password: ${secrets:DB__POSTGRES__PASSWORD}
+        database: ${secrets:DB__POSTGRES__DATABASE,goldenguide}
+        pool_size: 10
+        max_overflow: 20
+        read_only: false
+
+    vector_store:
+      qdrant_app:
+        provider: qdrant
+        host: ${secrets:VECTOR_STORE__QDRANT__HOST,qdrant}
+        port: ${secrets:VECTOR_STORE__QDRANT__PORT,'6333'}
+        https: ${secrets:VECTOR_STORE__QDRANT__HTTPS,'false'}
+        api_key: ${secrets:VECTOR_STORE__QDRANT__API_KEY}
+        timeout_seconds: 120
+
+    cache:
+      redis_app:
+        provider: redis
+        host: ${secrets:CACHE__REDIS__HOST,redis}
+        port: ${secrets:CACHE__REDIS__PORT,'6379'}
+        key_prefix: "goldenguide:"
+        max_size: 100
+        password: ${secrets:CACHE__REDIS__PASSWORD}

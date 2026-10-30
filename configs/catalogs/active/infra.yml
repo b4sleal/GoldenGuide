@@ -1,0 +1,11 @@
+catalog:
+  active:
+    blob_storage:
+      app: ${catalog.providers.blob_storage.minio_app}
+    db:
+      app: ${catalog.providers.db.postgres_goldenguide}
+      school: ${catalog.providers.db.postgres_goldenguide}
+    vector_store:
+      app: ${catalog.providers.vector_store.qdrant_app}
+    cache:
+      app: ${catalog.providers.cache.redis_app}

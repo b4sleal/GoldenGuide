@@ -1,0 +1,31 @@
+system:
+  logging:
+      level: INFO
+      format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+      datefmt: "%Y-%m-%d %H:%M:%S"
+  oidc:
+    # Plain HTTP is allowed only for the local development identity provider.
+    local_development_hosts: [localhost, 127.0.0.1, keycloak, keycloak.localhost]
+    http_timeout_seconds: 10
+    # Tolerated difference between the API and identity provider clocks.
+    clock_skew_seconds: 60
+    # Keep signature verification restricted to the existing algorithm.
+    id_token_algorithms: [RS256]
+  # Background jobs run inside the API process. While one runs it refreshes a heartbeat; a sweep
+  # fails runs with no heartbeat (or, never started, no activity) for zombie_timeout_minutes, which
+  # happens when the process restarts or crashes mid-job.
+  jobs:
+    heartbeat_seconds: 30
+    zombie_timeout_minutes: 5
+    zombie_sweep_seconds: 120
+  # Machine callers that authenticate with "Authorization: Bearer <key>" instead of signing in.
+  # Grant each only the scopes it needs. Key hashes come from secrets (never the keys themselves);
+  # a client whose hashes are unset is disabled. Create a key and its hash with:
+  #   python -m backend.core.startup.service_key <client_name>
+  # Two hashes allow rotation: set the new one, switch the caller, then clear the previous one.
+  service_clients:
+    github_actions_nightly:
+      scopes: [sources:collect, indexing:sync, jobs:read]
+      key_hashes:
+        - ${secrets:SERVICE_CLIENT__GITHUB_ACTIONS_NIGHTLY__KEY_HASH}
+        - ${secrets:SERVICE_CLIENT__GITHUB_ACTIONS_NIGHTLY__PREVIOUS_KEY_HASH}

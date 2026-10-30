@@ -1,0 +1,74 @@
+{
+  "realm": "goldenguide",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "editUsernameAllowed": false,
+  "loginWithEmailAllowed": true,
+  "bruteForceProtected": true,
+  "failureFactor": 5,
+  "maxFailureWaitSeconds": 900,
+  "roles": {
+    "realm": [
+      {
+        "name": "goldenguide-admin",
+        "description": "GoldenGuide administrator"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "goldenguide-web",
+      "name": "GoldenGuide Web",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "${OIDC_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "${SITE_ORIGIN}/api/v1/auth/callback"
+      ],
+      "webOrigins": [
+        "${SITE_ORIGIN}"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "goldenguide-realm-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "false",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "${KC_ADMIN_USERNAME}",
+      "enabled": true,
+      "emailVerified": true,
+      "realmRoles": [
+        "${KC_ADMIN_ROLE}"
+      ],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_ADMIN_PASSWORD}",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

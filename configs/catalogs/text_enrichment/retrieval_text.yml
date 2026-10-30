@@ -1,0 +1,210 @@
+catalog:
+  text_enrichment:
+    retrieval_text:
+
+      # ------------------------
+      # BASE STRATEGIES
+      # ------------------------
+
+      minimal:
+        # Short role-based prefix, low token overhead
+        wlu_page:
+          faculty:
+            - "Faculty page for {title}."
+          department_group:
+            - "Department group page for {title}."
+          department:
+            - "Department page for {title}."
+          program:
+            - "Program page for {title}."
+          glossary:
+            - "This page defines academic terms."
+          service:
+            - "Page: {title}."
+            - "This page provides student services or policy information."
+          course:
+            - "Academic Calendar Course: {subject_code}{course_number} — {title}"
+            - "Subject: {subject}"
+            - "Academic Year: {academic_year}"
+            - "Description: {description}"
+            - "Prerequisites: {prereq}"
+            - "Corequisites: {coreq}"
+            - "Exclusions: {exclusions}"
+            - "Notes: {notes}"
+            - "Credits: {credits}"
+          page:
+            - "Page: {title}."
+            - "University information page."
+          general:
+            - "Page: {title}."
+            - "University information page."
+
+        doc:
+          policy:
+            - "Official policy document regarding {title}. Filename: {filename}."
+          syllabus:
+            - "Course syllabus document for {title}. Filename: {filename}."
+          general:
+            - "Uploaded document titled {title}. Filename: {filename}."
+
+        loris_registration:
+          course:
+            - "LORIS Registration Course: {subject_code}{course_number} — {title}"
+            - "Term: {term_name}"
+            - "Section: {section_code}"
+            - "Description: {description}"
+            - "Description Prerequisites: {prereq_description}"
+            - "Registration Menu Prerequisites: {prereq_menu}"
+            - "Description Corequisites: {coreq_description}"
+            - "Registration Menu Corequisites: {coreq_menu}"
+            - "Exclusions: {exclusions}"
+            - "Restrictions: {restrictions}"
+            - "Notes: {notes}"
+
+
+      # ------------------------
+      # BALANCED STRATEGY
+      # ------------------------
+
+      balanced:
+        # More semantic signal, still concise
+        wlu_page:
+          faculty:
+            - "This is a faculty page for {title}."
+            - "Useful for questions about people, emails, or department contacts."
+          department_group:
+            - "This is a department group page for {title}."
+          department:
+            - "This is a department page for {title}."
+            - "Useful for exploring related departments or academic areas."
+          program:
+            - "This is a program page for {title}."
+            - "Useful for questions about majors, minors, and requirements."
+          glossary:
+            - "This page defines academic terms and terminology."
+            - "Useful for understanding academic terms and definitions."
+          service:
+            - "This page is {title}."
+            - "This page provides student services, policies, or administrative information."
+          course:
+            - "Official Wilfrid Laurier University Academic Calendar course information."
+            - "Course: {subject_code}{course_number} — {title}"
+            - "Subject: {subject}"
+            - "Academic Year: {academic_year}"
+            - "Description: {description}"
+            - "Prerequisites: {prereq}"
+            - "Corequisites: {coreq}"
+            - "Exclusions: {exclusions}"
+            - "Notes: {notes}"
+            - "Credits: {credits}"
+          page:
+            - "This page is {title}."
+            - "This page provides university-related information."
+          general:
+            - "This page is {title}."
+            - "This page provides university-related information."
+
+        doc:
+          policy:
+            - "This is an official policy document regarding {title}."
+            - "Useful for understanding official rules and procedures."
+            - "Filename: {filename}."
+          syllabus:
+            - "This is a course syllabus document for {title}."
+            - "Useful for finding course schedules, grading, and expectations."
+            - "Filename: {filename}."
+          general:
+            - "This is an uploaded document titled {title}."
+            - "Filename: {filename}."
+
+        loris_registration:
+          course:
+            - "Official Wilfrid Laurier University LORIS course registration information."
+            - "Course: {subject_code}{course_number} — {title}"
+            - "Subject: {subject}"
+            - "Term: {term_name}"
+            - "Section: {section_code}"
+            - "Description: {description}"
+            - "Description Prerequisites: {prereq_description}"
+            - "Registration Menu Prerequisites: {prereq_menu}"
+            - "Description Corequisites: {coreq_description}"
+            - "Registration Menu Corequisites: {coreq_menu}"
+            - "Exclusions: {exclusions}"
+            - "Restrictions: {restrictions}"
+            - "Notes: {notes}"
+            - "Instructional Method: {instructional_method}"
+      # ------------------------
+      # DEEP STRATEGY
+      # ------------------------
+
+      deep:
+        # High semantic coverage, strongest intent matching
+        wlu_page:
+          faculty:
+            - "This is a faculty page for {title}."
+            - "This page contains faculty, staff, or contact information related to {title}."
+            - "This page is useful for questions about faculty members, department contacts, or email information."
+          department_group:
+            - "This is a department group page for {title}."
+            - "This page lists departments or academic units within a broader academic area."
+          department:
+            - "This is a department page for {title}. It lists courses, programs, and related information."
+            - "This page is useful for exploring related departments, subject areas, or academic groupings."
+          program:
+            - "This is a program page for {title}."
+            - "This page describes academic programs, degree options, and academic pathways."
+            - "This page is useful for understanding program requirements and options."
+          glossary:
+            - "This page defines academic terms and university terminology."
+            - "This page is useful for understanding definitions of academic terminology."
+          service:
+            - "This page is {title}, from Wilfrid Laurier University."
+            - "This page provides student services, policies, or administrative guidance."
+          course:
+            - "Official Wilfrid Laurier University Academic Calendar course information for {subject_code}{course_number} — {title}."
+            - "This record describes the academic curriculum and course requirements published in the Academic Calendar."
+            - "Subject: {subject}"
+            - "Academic Year: {academic_year}"
+            - "Course Description: {description}"
+            - "Academic Calendar Prerequisites: {prereq}"
+            - "Academic Calendar Corequisites: {coreq}"
+            - "Academic Calendar Exclusions: {exclusions}"
+            - "Additional Course Notes: {notes}"
+            - "Course Credits: {credits}"
+          page:
+            - "This page is {title}, from Wilfrid Laurier University."
+            - "This page provides university information."
+          general:
+            - "This page is {title}, from Wilfrid Laurier University."
+            - "This page provides university information."
+
+        doc:
+          policy:
+            - "This is an official PDF document regarding university policy: {title}."
+            - "Useful for answering questions about official university rules, procedures, academic governance, and institutional guidelines."
+            - "Filename: {filename}."
+          syllabus:
+            - "This is an official course syllabus document for {title}."
+            - "Useful for answering questions regarding course schedules, assignment weighting, professor expectations, and required textbooks."
+            - "Filename: {filename}."
+          general:
+            - "This page provides university information extracted from an uploaded document."
+            - "Filename: {filename}."
+
+        loris_registration:
+          course:
+            - "Official Wilfrid Laurier University LORIS registration information for {subject_code}{course_number} — {title}."
+            - "This record contains registration requirements and restrictions for a specific academic term."
+            - "The course description and registration menu may provide different or additional prerequisite and corequisite information."
+            - "Subject: {subject}"
+            - "Academic Term: {term_name}"
+            - "Section: {section_code}"
+            - "Course Description: {description}"
+            - "Prerequisites from Course Description: {prereq_description}"
+            - "Prerequisites from LORIS Registration Menu: {prereq_menu}"
+            - "Corequisites from Course Description: {coreq_description}"
+            - "Corequisites from LORIS Registration Menu: {coreq_menu}"
+            - "Course Exclusions: {exclusions}"
+            - "Registration Restrictions: {restrictions}"
+            - "Additional Registration Notes: {notes}"
+            - "Instructional Method: {instructional_method}"

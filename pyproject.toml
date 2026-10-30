@@ -1,0 +1,113 @@
+[project]
+name = "goldenguide"
+version = "0.1.0"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic",
+    "pydantic-settings",
+    "python-dotenv",
+    "omegaconf",
+    "structlog",
+    "httpx",
+    "python-multipart",
+    "email-validator",
+    "duckling>=1.8.0",
+    "rapidfuzz>=3.14.5",
+    "deepmerge>=2.0",
+    "dependency-injector>=4.48.3",
+    "rich>=14.3.3",
+    "opentelemetry-api>=1.45.1",
+    "opentelemetry-sdk>=1.45.1",
+    "opentelemetry-exporter-otlp>=1.45.1",
+    "opentelemetry-instrumentation-fastapi>=0.66b1",
+    "opentelemetry-instrumentation-httpx>=0.66b1",
+    "opentelemetry-instrumentation-sqlalchemy>=0.66b1",
+    "joserfc>=1.6.8",
+]
+
+[dependency-groups]
+backend = [
+    "anthropic",
+    "beautifulsoup4",
+    "dependency-injector",
+    "langchain-text-splitters",
+    "lxml-html-clean",
+    "minio",
+    "psycopg",
+    "psycopg-pool",
+    "pypdf",
+    "qdrant-client",
+    "redis",
+    "requests",
+    "sqlalchemy",
+    "dependency_injector",
+    "google-genai>=1.68.0",
+    "openai>=2.29.0",
+    "asyncpg>=0.31.0",
+    "authlib>=1.9.1",
+    "joserfc>=1.6.8",
+    "alembic>=1.16",
+    "httpx2>=2.15",
+]
+
+embedding-gpu = [
+    "fastembed-gpu",
+    "sentence-transformers",
+    "torch",
+    "torchvision",
+    "torchaudio",
+]
+
+embedding-cpu = [
+    "fastembed",
+    "sentence-transformers",
+    # Match the existing model-library versions while selecting CPU wheels through tool.uv.sources.
+    "torch==2.10.0",
+    "torchvision==0.25.0",
+    "torchaudio==2.10.0",
+]
+
+dev = [
+    "import-linter>=2.15",
+    "pyright>=1.1.414",
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.1",
+]
+
+# Development containers include the same backend plus tools, in their own virtual environment.
+dev-backend = [{include-group = "backend"}, {include-group = "dev"}]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[build-system]
+requires = ["uv_build>=0.10.11,<0.11"]
+build-backend = "uv_build"
+
+[tool.uv]
+# Local `uv sync` / `uv run` (IDE, tests) installs the backend + dev tools, so tests always have
+# sqlalchemy, redis, etc. Containers explicitly select their dependency group rather than
+# inheriting these local defaults.
+default-groups = ["dev", "backend"]
+# CPU/GPU embeddings are separate processes and must never share one environment.
+conflicts = [[{group = "embedding-cpu"}, {group = "embedding-gpu"}]]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+# CPU images avoid downloading the CUDA runtime. macOS uses PyPI's native CPU wheels.
+torch = [{index = "pytorch-cpu", group = "embedding-cpu", marker = "sys_platform != 'darwin'"}]
+torchvision = [{index = "pytorch-cpu", group = "embedding-cpu", marker = "sys_platform != 'darwin'"}]
+torchaudio = [{index = "pytorch-cpu", group = "embedding-cpu", marker = "sys_platform != 'darwin'"}]
+
+[tool.uv.build-backend]
+module-name = ["goldenguide_common", "backend", "embedding_service"]

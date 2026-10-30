@@ -1,0 +1,26 @@
+catalog:
+  providers:
+    text_splitter:
+      small:
+        provider: lc-recursive-text-splitter
+        chunk_size: 300
+        chunk_overlap: 200
+        separators: ["\n\n", "\n", " ", ""]
+
+      medium:
+        provider: lc-recursive-text-splitter
+        chunk_size: 500
+        chunk_overlap: 200
+        separators: ["\n\n", "\n", " ", ""]
+
+      large:
+        provider: lc-recursive-text-splitter
+        chunk_size: 1000
+        chunk_overlap: 200
+        separators: ["\n\n", "\n", " ", ""]
+
+      dense:
+        provider: lc-recursive-text-splitter
+        chunk_size: 1500
+        chunk_overlap: 200
+        separators: ["\n\n", "\n", " ", ""]

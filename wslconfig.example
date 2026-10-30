@@ -1,0 +1,11 @@
+# Applies to every WSL 2 distribution, not just GoldenGuide. Restart WSL to apply new changes.
+[wsl2]
+processors=4
+memory=8GB
+swap=0
+
+[experimental]
+autoMemoryReclaim=gradual
+# Virtual disks created from now on give freed space back to Windows automatically
+# (existing disks: see "Disk usage and cleanup" in docs/docker.md).
+sparseVhd=true

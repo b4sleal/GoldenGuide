@@ -1,0 +1,59 @@
+# Production overrides, layered on docker-compose.yml:
+#   docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml --profile all --profile embedding-gpu up -d --build
+#
+# Removes the development credential fallbacks from docker-compose.yml. ${VAR:?message} makes Compose
+# refuse to start when a secret is missing, instead of starting with admin/admin, MinIO's default
+# keys, or an unauthenticated Qdrant.
+#
+# Compose checks these for EVERY service in the file, including profiles this host doesn't run.
+# A host running only some profiles must still set all of them (any non-empty value works for
+# services that host doesn't run).
+# Set them in the host's .env or a secret manager. Never commit them.
+
+services:
+  # Hosted realm for staging and production: redirect URIs come from SITE_ORIGIN, and its one seeded user is
+  # the first GoldenGuide admin (KC_ADMIN_USERNAME / KC_ADMIN_PASSWORD, role KC_ADMIN_ROLE). KC_HOSTNAME is Keycloak's public HTTPS address,
+  # which the tunnel routes to port 8081; it sits behind the tunnel's proxy headers. The realm imports
+  # only once, into an empty keycloak_data volume.
+  keycloak:
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:?Set KC_BOOTSTRAP_ADMIN_USERNAME}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?Set KC_BOOTSTRAP_ADMIN_PASSWORD}
+
+      KC_ADMIN_ROLE: ${KC_ADMIN_ROLE:?Set KC_ADMIN_ROLE}
+      KC_ADMIN_USERNAME: ${KC_ADMIN_USERNAME:?Set KC_ADMIN_USERNAME}
+      KC_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD:?Set KC_ADMIN_PASSWORD}
+
+      KC_HOSTNAME: ${KC_HOSTNAME:?Set KC_HOSTNAME to Keycloak's public HTTPS address}
+      KC_PROXY_HEADERS: xforwarded
+      KC_HTTP_ENABLED: "true"
+      SITE_ORIGIN: ${SITE_ORIGIN:?Set SITE_ORIGIN}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?Set OIDC_CLIENT_SECRET}
+    volumes:
+      - ./deploy/keycloak/realm.hosted.json:/opt/keycloak/data/import/goldenguide-realm.json:ro
+
+  grafana:
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?Set GRAFANA_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD}
+
+  postgres:
+    environment:
+      POSTGRES_USER: ${DB__POSTGRES__USER:?Set DB__POSTGRES__USER}
+      POSTGRES_PASSWORD: ${DB__POSTGRES__PASSWORD:?Set DB__POSTGRES__PASSWORD}
+
+  # Empty MinIO credentials fall back to the public minioadmin/minioadmin defaults.
+  minio:
+    environment:
+      MINIO_ROOT_USER: ${BLOB_STORAGE__MINIO__ACCESS_KEY:?Set BLOB_STORAGE__MINIO__ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${BLOB_STORAGE__MINIO__SECRET_KEY:?Set BLOB_STORAGE__MINIO__SECRET_KEY}
+
+  # An empty Qdrant API key disables authentication.
+  qdrant:
+    environment:
+      QDRANT__SERVICE__API_KEY: ${VECTOR_STORE__QDRANT__API_KEY:?Set VECTOR_STORE__QDRANT__API_KEY}
+
+  redis:
+    environment:
+      REDIS_PASSWORD: ${CACHE__REDIS__PASSWORD:?Set CACHE__REDIS__PASSWORD}
+      REDISCLI_AUTH: ${CACHE__REDIS__PASSWORD:?Set CACHE__REDIS__PASSWORD}

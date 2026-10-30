@@ -1,0 +1,4 @@
+# Shell scripts and SQL run inside Linux containers: a Windows checkout must keep LF line
+# endings, or `sh` fails with errors like "set: Illegal option -" from the stray \r.
+*.sh   text eol=lf
+*.sql  text eol=lf

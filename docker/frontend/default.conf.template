@@ -1,0 +1,57 @@
+# Docker's embedded DNS resolves both Compose service names and remote backend hostnames.
+# Resolving at request time lets the frontend run independently of a local backend container.
+resolver 127.0.0.11 valid=30s ipv6=off;
+
+map $http_x_forwarded_proto $forwarded_proto {
+    default $http_x_forwarded_proto;
+    "" $scheme;
+}
+
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+    server_tokens off;
+    client_max_body_size 2m;
+
+    location = /health {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    location ~ /\. {
+        deny all;
+    }
+
+    # Forward the original path, cookies and host so OIDC and origin checks keep working.
+    # Streaming stays unbuffered; the backend owns rate limiting and response/error schemas.
+    location ~ ^/(api/|docs/?$|redoc/?$|openapi\.json$|health/) {
+        set $backend_origin "${BACKEND_ORIGIN}";
+        proxy_pass $backend_origin$request_uri;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Connection "";
+        proxy_ssl_server_name on;
+        proxy_ssl_verify on;
+        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 300s;
+    }
+
+    location / {
+        add_header X-Content-Type-Options nosniff always;
+        add_header Referrer-Policy strict-origin-when-cross-origin always;
+        add_header X-Frame-Options DENY always;
+        add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+        # Static HTML no longer passes through FastAPI's security middleware. Keep its baseline
+        # browser policy here; API responses retain the headers produced by that middleware.
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" always;
+        try_files $uri $uri/ =404;
+    }
+}

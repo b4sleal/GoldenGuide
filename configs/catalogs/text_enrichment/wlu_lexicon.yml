@@ -1,0 +1,856 @@
+catalog:
+  text_enrichment:
+    wlu_lexicon:
+      faculties:
+        arts:
+          canonical: Faculty of Arts
+          aliases:
+            - arts
+        education:
+          canonical: Faculty of Education
+          aliases:
+            - education
+        public_safety:
+          canonical: Public Safety
+          aliases:
+            - public safety
+            - public safety programs
+        human_and_social_sciences:
+          canonical: Faculty of Human and Social Sciences
+          aliases:
+            - human and social sciences
+            - human & social sciences
+            - fhss
+        liberal_arts:
+          canonical: Faculty of Liberal Arts
+          aliases:
+            - liberal arts
+        music:
+          canonical: Faculty of Music
+          aliases:
+            - music
+        science:
+          canonical: Faculty of Science
+          aliases:
+            - science
+            - sciences
+        lazaridis_school_of_business_and_economics:
+          canonical: Lazaridis School of Business and Economics
+          aliases:
+            - lazaridis
+            - lazaridis school of business and economics
+            - business
+            - business and economics
+            - business & economics
+            - economics
+            - lsbe
+        social_work:
+          canonical: Lyle S. Hallman Faculty of Social Work
+          aliases:
+            - social work
+            - faculty of social work
+            - lyle s. hallman faculty of social work
+            - lyle s hallman faculty of social work
+            - hallman
+            - fsw
+        international_policy_and_governance:
+          canonical: School of International Policy and Governance
+          aliases:
+            - international policy and governance
+            - school of international policy and governance
+            - international policy
+            - sipg
+        martin_luther_university_college:
+          canonical: Martin Luther University College
+          aliases:
+            - martin luther
+            - martin luther university college
+            - luther
+            - mluc
+        graduate_and_postdoctoral_studies:
+          canonical: The Faculty of Graduate and Postdoctoral Studies
+          aliases:
+            - graduate studies
+            - postdoctoral studies
+            - graduate & postdoctoral studies
+        interdisciplinary:
+          canonical: Interdisciplinary
+          aliases:
+            - interdisciplinary studies
+            - University Interdisciplinary
+            - University Interdisciplinary Courses
+      departments:
+        astronomy:
+          canonical: Astronomy
+          course_code: AS
+          aliases:
+            - astro
+            - Astronomy (cp/pc Dept)
+        biological_and_chemical_sciences:
+          canonical: Biological and Chemical Sciences
+          course_code: BH
+          aliases:
+            - biological & chemical sciences
+            - bacs
+        computer_science:
+          canonical: Computer Science
+          course_code: CP
+          aliases:
+            - cs
+            - comp sci
+            - computer sci
+            - Computer Science (CP/PC Dept)
+            - Computer Science and Physics
+        environmental_studies:
+          canonical: Environmental Studies
+          course_code: ES
+          aliases:
+            - env studies
+            - environmental studies (GG/ES)
+        geography:
+          canonical: Geography
+          course_code: GG
+          aliases:
+            - geog
+            - geography program
+            - geography (gg/es)
+        geography_and_environmental_studies:
+          canonical: Geography and Environmental Studies
+          course_code: GESC
+          aliases:
+            - geography & environ studies
+        geology:
+          canonical: Geology
+          course_code: GL
+          aliases:
+            - geol
+            - geology program
+            - geology (gg/es)
+        german:
+          canonical: German
+          course_code: GM
+          aliases:
+            - german program
+            - german (lang/lit)
+        italian:
+          canonical: Italian
+          course_code: IT
+          aliases:
+            - italian (lang/lit)
+        indigenous_studies:
+          canonical: Indigenous Studies
+          course_code: ID
+          aliases:
+            - indig studies
+            - indigenous studies program
+        psychology:
+          canonical: Psychology
+          course_code: PS
+          aliases:
+            - psych
+            - psy
+        anthropology:
+          canonical: Anthropology
+          course_code: AN
+          aliases:
+            - anthro
+            - anth
+            - anthropologist
+            - anthrop
+            - anthropology program
+        biology:
+          canonical: Biology
+          course_code: BI
+          aliases:
+            - bio
+        cultural_analysis_and_social_theory:
+          canonical: Cultural Analysis and Social Theory
+          course_code: CQ
+          aliases:
+            - cultural analysis & social thy
+        cultural_studies:
+          canonical: Cultural Studies
+          course_code: KS
+          aliases:
+            - cultural studies program
+        economics:
+          canonical: Economics
+          course_code: EC
+          aliases:
+            - econ
+        french:
+          canonical: French
+          course_code: FR
+          aliases:
+            - french (lang/lit)
+        game_design_and_development:
+          canonical: Game Design and Development
+          course_code: DD
+          aliases:
+            - game design & development
+            - game design and development program
+        health_science:
+          canonical: Health Science
+          course_code: HE
+          aliases:
+            - health sciences
+        human_rights:
+          canonical: Human Rights
+          course_code: HR
+          aliases:
+            - human rights program
+            - human rights & Human Diversity
+        mathematics:
+          canonical: Mathematics
+          course_code: MA
+          aliases:
+            - math
+            - maths
+        north_american_studies:
+          canonical: North American Studies
+          course_code: 'NO'
+          aliases:
+            - north american studies program
+        muslim_studies:
+          canonical: Muslim Studies
+          course_code: MZ
+          aliases:
+            - muslim studies program
+        physics:
+          canonical: Physics
+          course_code: PC
+          aliases:
+            - phys
+            - Physics (PC/CP Dept)
+        public_safety:
+          canonical: Public Safety
+          course_code: SAFE
+          aliases:
+            - public safety program
+        religion_and_culture:
+          canonical: Religion and Culture
+          course_code: RE
+          aliases:
+            - religion&culture
+        science:
+          canonical: Science
+          course_code: SC
+          aliases:
+            - sci
+            - science courses
+            - Science (SC) Courses
+        social_and_environmental_justice:
+          canonical: Social and Environmental Justice
+          course_code: SOJE
+          aliases:
+            - social and environ justice
+            - social and environmental justice program
+            - sej
+        social_entrepreneurship:
+          canonical: Social Entrepreneurship
+          course_code: SE
+          aliases:
+            - social entrepreneurship program
+            - social entrepreneurship (se)
+        social_work:
+          canonical: Social Work
+          course_code: SK
+          aliases:
+            - social work - undergraduate program
+            - social work (sw)
+        spanish:
+          canonical: Spanish
+          course_code: SP
+          aliases:
+            - spanish (lang/lit)
+        chemistry:
+          canonical: Chemistry
+          course_code: CH
+          aliases:
+            - chem
+        business:
+          canonical: Business
+          course_code: BU
+          aliases:
+            - bba
+            - business (Waterloo Campus)
+            - business administration
+        education:
+          canonical: Education
+          course_code: EU
+          aliases:
+            - educational studies
+        user_experience_design:
+          canonical: User Experience Design
+          course_code: UX
+          aliases:
+            - user experience design program
+        water_science_and_environmental_health:
+          canonical: Water Science and Environmental Health
+          course_code: WASC
+          aliases:
+            - water science
+            - environmental health
+            - wseh
+            - Applied Water Science
+        arabic:
+          canonical: Arabic
+          course_code: AB
+          aliases:
+            - arabic (lang/lit)
+        american_sign_language:
+          canonical: American Sign Language
+          course_code: '73'
+          aliases: []
+        archaeology:
+          canonical: Archaeology
+          course_code: AR
+          aliases: []
+        arts_topic_seminar:
+          canonical: Arts Topic Seminar
+          course_code: AF
+          aliases: []
+        business_technology_management:
+          canonical: Business Technology Management
+          course_code: MB
+          aliases: []
+        business_entrepreneurship_and_tech:
+          canonical: 'Business, Entrepreneurship and Technology'
+          course_code: BE
+          aliases:
+            - 'Business,Entrepreneurship&Tech'
+        classics:
+          canonical: Classics
+          course_code: CL
+          aliases: []
+        climate_change:
+          canonical: Climate Change
+          course_code: CLIM
+          aliases: []
+        commerce:
+          canonical: Commerce
+          course_code: '30'
+          aliases: []
+        communication_studies:
+          canonical: Communication Studies
+          course_code: CS
+          aliases: []
+        criminology:
+          canonical: Criminology
+          course_code: CC
+          aliases: []
+        data_science:
+          canonical: Data Science
+          course_code: DATA
+          aliases: []
+        digital_humanities:
+          canonical: Digital Humanities
+          course_code: DH
+          aliases: []
+        education_minor:
+          canonical: Education Minor
+          course_code: EM
+          aliases: []
+        english:
+          canonical: English
+          course_code: EN
+          aliases: []
+        film_studies:
+          canonical: Film Studies
+          course_code: FS
+          aliases: []
+        finance_and_accountg:
+          canonical: Finance and Accounting
+          course_code: FA
+          aliases:
+            - Finance&Accountg
+        fine_arts:
+          canonical: Fine Arts
+          course_code: FI
+          aliases: []
+        global_citizenship:
+          canonical: Global Citizenship
+          course_code: GC
+          aliases: []
+        global_crime_and_justice:
+          canonical: Global Crime and Justice
+          course_code: UNDC
+          aliases:
+            - Global Crime & Justice
+        global_governance:
+          canonical: Global Governance
+          course_code: GV
+          aliases: []
+        global_justice_rel_and_culture:
+          canonical: 'Global Justice, Rel and Culture'
+          course_code: GJRC
+          aliases:
+            - 'Global Justice, Rel & Culture'
+        global_studies:
+          canonical: Global Studies
+          course_code: GS
+          aliases: []
+        greek:
+          canonical: Greek
+          course_code: GR
+          aliases: []
+        health_studies:
+          canonical: Health Studies
+          course_code: HS
+          aliases: []
+        history:
+          canonical: History
+          course_code: HI
+          aliases: []
+
+        humanities_with_leadership_foundations:
+            canonical: Humanities with Leadership Foundations
+            course_code: HMLD
+            aliases: []
+        Technology Management:
+            canonical: Technology Management #Graduate Level for Business
+            course_code: TM
+            aliases: []
+
+        human_biology:
+          canonical: Human Biology
+          course_code: HN
+          aliases: []
+        innovation:
+          canonical: Innovation
+          course_code: IE
+          aliases: []
+        interdisciplinary_studies:
+          canonical: Interdisciplinary Studies
+          course_code: UU
+          aliases: []
+        interdisciplinary_studies_fhss:
+          canonical: 'Interdisciplinary Studies:FHSS'
+          course_code: ISHS
+          aliases: []
+        international_education:
+          canonical: International Education
+          course_code: INED
+          aliases: []
+        international_public_policy:
+          canonical: International Public Policy
+          course_code: IP
+          aliases: []
+        kinesiology_and_physical_ed:
+          canonical: Kinesiology and Physical Education
+          course_code: KP
+          aliases:
+            - Kinesiology & Physical Ed
+        language_and_literature:
+          canonical: Language and Literature
+          course_code: LL
+          aliases: []
+        latin:
+          canonical: Latin
+          course_code: LA
+          aliases: []
+        law_and_society:
+          canonical: Law and Society
+          course_code: LY
+          aliases:
+            - Law & Society
+        leadership:
+          canonical: Leadership
+          course_code: OL
+          aliases: []
+        management_analytics:
+          canonical: Management Analytics
+          course_code: MGTA
+          aliases: []
+        master_finance:
+          canonical: Master Finance
+          course_code: MF
+          aliases: []
+        master_science:
+          canonical: Master Science
+          course_code: MS
+          aliases: []
+        supply_chain_management:
+          canonical: Supply Chain Management #Graduate for Business
+          course_code: SCMG
+          aliases: []
+        media_studies:
+          canonical: Media Studies
+          course_code: MX
+          aliases: []
+        medieval_studies:
+          canonical: Medieval Studies
+          course_code: ML
+          aliases: []
+        music:
+          canonical: Music
+          course_code: MU
+          aliases: []
+        music_academic_studies:
+          canonical: Music-Academic Studies
+          course_code: MUAC
+          aliases: []
+        music_business:
+          canonical: Music-Business
+          course_code: MUBU
+          aliases: []
+        music_community_mus_and_educ:
+          canonical: Music-Community Music and Education
+          course_code: MUCE
+          aliases:
+            - Music-Community Mus & Educ
+        music_composition:
+          canonical: Music-Composition
+          course_code: MUCP
+          aliases: []
+        music_ensemble:
+          canonical: Music-Ensemble
+          course_code: MUEN
+          aliases: []
+        music_minor:
+          canonical: Music-Minor
+          course_code: MUMI
+          aliases: []
+        music_performance_studio:
+          canonical: Music-Performance Studio
+          course_code: MUPS
+          aliases: []
+        music_skills_and_techniques:
+          canonical: Music-Skills and Techniques
+          course_code: MUST
+          aliases:
+            - Music-Skills & Techniques
+        paramedicine:
+          canonical: Paramedicine
+          course_code: PARA
+          aliases: []
+        philosophy:
+          canonical: Philosophy
+          course_code: PP
+          aliases: []
+        policing:
+          canonical: Policing
+          course_code: PD
+          aliases:
+            - police studies
+            - public safety programs
+        political_science:
+          canonical: Political Science
+          course_code: PO
+          aliases: []
+        sanskrit:
+          canonical: Sanskrit
+          course_code: SKRT
+          aliases: []
+        social_venture_entrepreneur:
+          canonical: Social Venture Entrepreneur
+          course_code: '61'
+          aliases: []
+        sociology:
+          canonical: Sociology
+          course_code: SY
+          aliases: []
+        statistics:
+          canonical: Statistics
+          course_code: ST
+          aliases: []
+        sussex_law:
+          canonical: Sussex Law
+          course_code: XLAW
+          aliases: []
+        theatre:
+          canonical: Theatre
+          course_code: TR
+          aliases: []
+        theology:
+          canonical: Theology
+          course_code: TH
+          aliases: []
+        uw_actuarial_science:
+          canonical: UW-Actuarial Science
+          course_code: '36'
+          aliases: []
+        uw_applied_mathematics:
+          canonical: UW-Applied Mathematics
+          course_code: AP
+          aliases: []
+        uw_chinese:
+          canonical: UW-Chinese
+          course_code: CF
+          aliases: []
+        uw_combinatorics_and_opt:
+          canonical: UW-Combinatorics and Optimization
+          course_code: '04'
+          aliases:
+            - UW-Combinatorics&Opt
+        uw_communication_studies:
+          canonical: UW-Communication Studies
+          course_code: '81'
+          aliases: []
+        uw_computational_mathematics:
+          canonical: UW-Computational Mathematics
+          course_code: CX
+          aliases: []
+        uw_computer_science:
+          canonical: UW-Computer Science
+          course_code: '05'
+          aliases: []
+        uw_digital_arts_communication:
+          canonical: UW-Digital Arts Communication
+          course_code: '79'
+          aliases: []
+        uw_dutch:
+          canonical: UW-Dutch
+          course_code: '32'
+          aliases: []
+        uw_earth_sciences:
+          canonical: UW-Earth Sciences
+          course_code: '08'
+          aliases: []
+        uw_east_asian_culture:
+          canonical: UW-East Asian Culture
+          course_code: '46'
+          aliases: []
+        uw_english_as_second_language:
+          canonical: UW-English as Second Language
+          course_code: EL
+          aliases: []
+        uw_english_for_multilingual_sp:
+          canonical: UW-English for Multilingual Sp
+          course_code: '59'
+          aliases: []
+        uw_environmental_st:
+          canonical: UW-Environmental Studies
+          course_code: '09'
+          aliases:
+            - UW-Environmental St
+        uw_health:
+          canonical: UW-Health
+          course_code: '78'
+          aliases: []
+        uw_japanese:
+          canonical: UW-Japanese
+          course_code: JA
+          aliases: []
+        uw_knowledge_integration:
+          canonical: UW-Knowledge Integration
+          course_code: '54'
+          aliases: []
+        uw_korean:
+          canonical: UW-Korean
+          course_code: KO
+          aliases: []
+        uw_management_science:
+          canonical: UW-Management Science
+          course_code: '15'
+          aliases: []
+        uw_math_electives:
+          canonical: UW-Math Electives
+          course_code: '25'
+          aliases: []
+        uw_mathematical_business:
+          canonical: UW-Mathematical Business
+          course_code: MW
+          aliases: []
+        uw_mgmt_sciences_and_engineering:
+          canonical: UW-Management Sciences and Engineering
+          course_code: '74'
+          aliases:
+            - UW-Mgmt Sciences & Engineering
+        uw_peace_and_conflict_studies:
+          canonical: UW-Peace and Conflict Studies
+          course_code: '34'
+          aliases:
+            - UW-Peace&Conflict Studies
+        uw_pure_mathematics:
+          canonical: UW-Pure Mathematics
+          course_code: PM
+          aliases: []
+        uw_quantum_info_and_computation:
+          canonical: UW-Quantum Information and Computation
+          course_code: '85'
+          aliases:
+            - UW-Quantum Info & Computation
+        uw_recreation:
+          canonical: UW-Recreation
+          course_code: '17'
+          aliases: []
+        uw_religious_studies:
+          canonical: UW-Religious Studies
+          course_code: '18'
+          aliases: []
+        uw_social_development_studies:
+          canonical: UW-Social Development Studies
+          course_code: '53'
+          aliases: []
+        uw_speech_communication:
+          canonical: UW-Speech Communication
+          course_code: SM
+          aliases: []
+        uw_statistics:
+          canonical: UW-Statistics
+          course_code: '20'
+          aliases: []
+        uw_studies_in_islam:
+          canonical: UW-Studies in Islam
+          course_code: '52'
+          aliases: []
+
+
+        womens_studies:
+          canonical: Women's Studies
+          course_code: WS
+          aliases: []
+        youth_and_children_studies:
+          canonical: Youth and Children Studies
+          course_code: YC
+          aliases: []
+        community_engagement:
+          canonical: Community Engagement
+          course_code: CMEG
+          aliases: []
+        co_operative_education:
+          canonical: Co-operative Education
+          course_code: COOP
+          aliases: []
+        digital_media_and_journalism:
+          canonical: Digital Media and Journalism
+          course_code: DMJN
+          aliases:
+            - journalism
+            - JN
+        entrepreneurship:
+          canonical: Entrepreneurship
+          course_code: ENTR
+          aliases: []
+        environmental_science:
+          canonical: Environmental Science
+          course_code: ENVX
+          aliases: []
+        foundations:
+          canonical: Foundations
+          course_code: BF
+          aliases:
+            - BRFO
+        general_engineering:
+          canonical: General Engineering
+          course_code: GENG
+          aliases: []
+        health_administration:
+          canonical: Health Administration
+          course_code: HD
+          aliases:
+            - HEAD
+        history_and_philosophy_of_science:
+          canonical: History and Philosophy of Science
+          course_code: HP
+          aliases:
+            - HPSC
+        labour_studies_and_career_development:
+          canonical: Labour Studies and Career Development
+          course_code: WORK
+          aliases: []
+        mediterranean_studies:
+          canonical: Mediterranean Studies
+          course_code: MI
+          aliases:
+            - MEDS
+        music_therapy:
+          canonical: Music Therapy
+          course_code: MUMT
+          aliases: []
+        social_welfare:
+          canonical: Social Welfare
+          course_code: SL
+          aliases:
+            - SCWL
+        software_engineering:
+          canonical: Software Engineering
+          course_code: SENG
+          aliases: []
+
+
+      glossary:
+        prerequisites:
+          canonical: Prerequisites
+          aliases:
+            - prereq
+            - pre req
+            - requirements
+            - required courses
+        corequisites:
+          canonical: Corequisites
+          aliases:
+            - coreq
+            - co req
+        exclusions:
+          canonical: Exclusions
+          aliases:
+            - exclusion
+            - course exclusions
+        credits:
+          canonical: Credits
+          aliases:
+            - credit
+            - credit hours
+        electives:
+          canonical: Electives
+          aliases:
+            - elective
+            - optional courses
+
+      registration_notes:
+        prerequisites:
+          canonical: Prerequisites
+          aliases:
+            - prerequisite
+            - pre-requisites
+            - pre-requisite
+            - prerquisites
+
+        corequisites:
+          canonical: Co-requisites
+          aliases:
+            - corequisites
+            - corequisite
+            - co-requisite
+            - co-rerequisites
+
+        exclusions:
+          canonical: Exclusions
+          aliases:
+            - exclusion
+            - exlcusion
+            - excluskon
+
+        notes:
+          canonical: Notes
+          aliases:
+            - note
+            - special notes
+
+        registration_notes:
+          canonical: Registration Notes
+          aliases:
+            - loris registration notes
+            - special registration notes
+
+        mode_of_delivery:
+          canonical: Mode of Delivery
+          aliases: [ ]
+
+        contact_hours:
+          canonical: Contact Hours
+          aliases: [ ]
+
+        hours_per_week:
+          canonical: Hours per Week
+          aliases: [ ]
+
+        lecture_hours:
+          canonical: Lecture Hours
+          aliases: [ ]
+
+        lab:
+          canonical: Lab
+          aliases: [ ]

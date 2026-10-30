@@ -1,0 +1,79 @@
+// Grafana Alloy: collects every container's stdout/stderr and ships it to Loki.
+//
+//   container stdout -> Docker -> Alloy (discover, label, parse) -> Loki -> Grafana
+//
+// GoldenGuide services log one JSON object per line (src/backend/shared/logging/configure.py).
+// Alloy reads `level` and `trace_id` from that JSON so Grafana can filter by severity and jump
+// from a log line to its trace in Jaeger. Non-JSON lines (Postgres, Redis, ...) pass through unchanged.
+
+// 1. Find running containers via the Docker API.
+//    Development only: socket access exposes container metadata. In AWS, logs go to
+//    CloudWatch through the ECS log driver instead, with no socket mount.
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// 2. Turn Docker metadata into Loki labels. Labels are indexed, so keep them few and low-cardinality.
+discovery.relabel "containers" {
+  targets = []
+
+  // Compose service name, e.g. "backend", "local-embedding-gpu".
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service_name"
+  }
+
+  // Container name without Docker's leading slash.
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+}
+
+// 3. Tail the logs of every discovered container.
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.containers.targets
+  relabel_rules = discovery.relabel.containers.rules
+  forward_to    = [loki.process.goldenguide.receiver]
+}
+
+// 4. Parse GoldenGuide's JSON lines.
+loki.process "goldenguide" {
+  // Read fields from the JSON body. Lines that are not JSON simply skip this step.
+  stage.json {
+    expressions = {
+      level    = "level",
+      trace_id = "trace_id",
+    }
+  }
+
+  // `level` becomes a label (only five possible values), so {level="error"} is a fast query.
+  stage.labels {
+    values = {
+      level = "",
+    }
+  }
+
+  // `trace_id` is unique per request, so it must NOT be a label (that would create one index
+  // stream per request). Structured metadata keeps it searchable without bloating the index.
+  stage.structured_metadata {
+    values = {
+      trace_id = "",
+    }
+  }
+
+  forward_to = [loki.write.local.receiver]
+}
+
+// 5. Push to Loki: the local container by default, or another machine's Loki (LOKI_PUSH_URL)
+//    when observability runs elsewhere. `host` tells machines apart in Grafana: {host="pc"}.
+loki.write "local" {
+  endpoint {
+    url = sys.env("LOKI_PUSH_URL")
+  }
+  external_labels = {
+    host = sys.env("MACHINE_NAME"),
+  }
+}

@@ -1,0 +1,65 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [master, main]
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    # Require this exact, unique check name in the default branch's GitHub rules.
+    name: All tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: infra_test
+          POSTGRES_PASSWORD: disposable_ci_password
+          POSTGRES_DB: goldenguide_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U infra_test -d goldenguide_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      qdrant:
+        # Use the same server image as the application's Compose configuration.
+        image: qdrant/qdrant@sha256:0425e3e03e7fd9b3dc95c4214546afe19de2eb2e28ca621441a56663ac6e1f46
+        ports: ['6333:6333']
+    env:
+      PYTHONPATH: src
+      GOLDENGUIDE_REQUIRE_TEST_SERVICES: '1'
+      GOLDENGUIDE_TEST_DATABASE_URL: postgresql+asyncpg://infra_test:disposable_ci_password@127.0.0.1:5432/goldenguide_test
+      REDIS_TEST_URL: redis://127.0.0.1:6379/0
+      QDRANT_TEST_URL: http://127.0.0.1:6333
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: '0.10.11'
+          python-version: '3.14'
+          enable-cache: false
+      - name: Install locked backend and test dependencies
+        run: uv sync --locked --group backend --group dev
+      - name: Wait for the disposable vector store
+        run: curl --fail --retry 15 --retry-all-errors --retry-delay 1 http://127.0.0.1:6333/readyz
+      - name: All unit and integration tests
+        # Discover the whole test tree so new packages are included automatically.
+        run: uv run --no-sync pytest tests -q --strict-config --strict-markers

@@ -1,0 +1,62 @@
+catalog:
+  profiles:
+    vector_collection:
+      dense:
+        version: 1
+        key: minilm_large_dense
+        chunking: ${catalog.providers.text_splitter.large}
+        text_enrichment: ${catalog.text_enrichment.retrieval_text.deep}
+        vectors:
+          dense:
+            embedding:
+              primary: ${catalog.providers.local_embedding.minilm}
+            distance: cosine
+
+      sparse:
+        version: 1
+        key: minilm_large_sparse
+        chunking: ${catalog.providers.text_splitter.large}
+        text_enrichment: ${catalog.text_enrichment.retrieval_text.deep}
+        vectors:
+          dense:
+            embedding:
+              primary: ${catalog.providers.local_embedding.minilm}
+            distance: cosine
+          sparse:
+            vectorizer:
+              primary: ${catalog.providers.local_sparse_vectorizer.splade}
+
+      multi:
+        version: 1
+        key: minilm_large_multi
+        chunking: ${catalog.providers.text_splitter.large}
+        text_enrichment: ${catalog.text_enrichment.retrieval_text.deep}
+        vectors:
+          dense:
+            embedding:
+              primary: ${catalog.providers.local_embedding.minilm}
+            distance: cosine
+          multi_vector:
+            embedding:
+              primary: ${catalog.providers.local_embedding.colbert}
+            size: 128
+            distance: cosine
+
+      multi_sparse:
+        version: 1
+        key: minilm_large_multi_sparse
+        chunking: ${catalog.providers.text_splitter.large}
+        text_enrichment: ${catalog.text_enrichment.retrieval_text.deep}
+        vectors:
+          dense:
+            embedding:
+              primary: ${catalog.providers.local_embedding.minilm}
+            distance: cosine
+          sparse:
+            vectorizer:
+              primary: ${catalog.providers.local_sparse_vectorizer.splade}
+          multi_vector:
+            embedding:
+              primary: ${catalog.providers.local_embedding.colbert}
+            size: 128
+            distance: cosine

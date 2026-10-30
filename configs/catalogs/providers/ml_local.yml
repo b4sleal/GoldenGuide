@@ -1,0 +1,51 @@
+catalog:
+  providers:
+    local_embedding:
+      minilm-cpu:
+        provider: minilm
+        model_name: all-MiniLM-L6-v2
+        dimension: 384
+        device: cpu
+        runtime: cpu
+
+      minilm:
+        provider: minilm
+        model_name: all-MiniLM-L6-v2
+        dimension: 384
+        device: cuda
+        runtime: gpu
+
+      colbert:
+        provider: fastembed_colbert
+        model_name: colbert-ir/colbertv2.0
+        dimension: 128
+        device: cuda
+        runtime: gpu
+
+    # Cross-encoders re-score search candidates against the question (query + passage read together).
+    # MiniLM-L-6 is small (~22M params); for higher quality at more memory
+    # swap model_name for BAAI/bge-reranker-base or BAAI/bge-reranker-v2-m3.
+    local_reranker:
+      cross_encoder:
+        provider: cross_encoder
+        model_name: BAAI/bge-reranker-base
+        max_length: 512
+        batch_size: 32
+        device: cuda
+        runtime: gpu
+
+      cross_encoder-cpu:
+        provider: cross_encoder
+        model_name: cross-encoder/ms-marco-MiniLM-L-6-v2
+        max_length: 512
+        batch_size: 16
+        device: cpu
+        runtime: cpu
+
+    local_sparse_vectorizer:
+      splade:
+        provider: splade
+        model_name: prithivida/Splade_PP_en_v1
+        batch_size: 10
+        device: cuda
+        runtime: gpu

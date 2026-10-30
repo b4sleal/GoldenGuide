@@ -1,0 +1,7 @@
+local_embedding_service:
+  api_key: ${secrets:LOCAL_EMBEDDING_SERVICE__API_KEY}
+  runtime: ${secrets:EMBEDDING_RUNTIME,gpu}
+  host: ${secrets:LOCAL_EMBEDDING_SERVICE__HOST,local-embedding-gpu}
+  port: ${secrets:LOCAL_EMBEDDING_SERVICE__PORT,'8001'}
+  request_timeout_seconds: 180
+  max_texts_per_request: 16

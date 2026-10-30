@@ -1,0 +1,10 @@
+# LaTeX build artifacts (build with: pdflatex GoldenGuide-SDD.tex, twice)
+*.aux
+*.lof
+*.log
+*.out
+*.toc
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz

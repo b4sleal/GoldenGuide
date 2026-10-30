@@ -1,0 +1,37 @@
+# Grafana data sources, provisioned from code so every environment is set up identically
+# (no manual clicking that a new maintainer would have to rediscover).
+#
+# The two sources are linked both ways:
+#   Loki log line  --(trace_id field)-->  Jaeger trace
+#   Jaeger span    --(trace_id)------->  Loki logs for that request
+apiVersion: 1
+
+datasources:
+  - name: Loki
+    uid: goldenguide-loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    isDefault: true
+    jsonData:
+      # Turns the trace_id inside each JSON log line into a "View trace" link.
+      derivedFields:
+        - name: TraceID
+          matcherRegex: '"trace_id":\s*"(\w+)"'
+          url: '$${__value.raw}'
+          datasourceUid: goldenguide-jaeger
+
+  - name: Jaeger
+    uid: goldenguide-jaeger
+    type: jaeger
+    access: proxy
+    url: http://jaeger:16686
+    jsonData:
+      # From any span, open the logs written during that trace.
+      tracesToLogsV2:
+        datasourceUid: goldenguide-loki
+        spanStartTimeShift: "-1m"
+        spanEndTimeShift: "1m"
+        # trace_id is Loki structured metadata (set by Alloy), filtered across all services.
+        customQuery: true
+        query: '{service_name=~".+"} | trace_id="$${__span.traceId}"'

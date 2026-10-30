@@ -1,0 +1,528 @@
+# GoldenGuide runtime stack (built images, no source mounts). Other files layer on top of this one:
+#   Development: docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile all-dev --profile embedding-gpu up -d --build
+#   Production:  docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile all --profile embedding-gpu up -d --build
+#   Staging:     same as production with --env-file .env.staging (see .env.staging.example)
+# all/all-dev never include an embedding service: add embedding-gpu or embedding-cpu (or neither).
+#
+# Profiles group services so each part can run on its own host. Point each host's .env at the
+# remote endpoints it needs. `required: false` depends_on entries only order services that are
+# running locally.
+#
+# All values come from .env (see .env.dev.example); the ${VAR:-default} fallbacks are development defaults.
+
+# ---------------------------------------------------------------------------------------------
+# Shared fragments (`x-` keys are ignored by Compose; `<<: *name` merges them into a service).
+# ---------------------------------------------------------------------------------------------
+
+# Per-container CPU/RAM caps, enforced on Linux and Docker Desktop. `cpus` is in cores (0.5 = half a core).
+# memswap_limit == mem_limit means no swap: a container that exceeds its RAM is
+# OOM-killed instead of swapping. Services that need more override all three keys.
+x-container-limits: &container-limits
+  cpus: ${SERVICE_CPUS:-0.5}
+  mem_limit: ${SERVICE_MEMORY_LIMIT:-512m}
+  memswap_limit: ${SERVICE_MEMORY_LIMIT:-512m}
+  logging:
+    driver: json-file
+    options:
+      max-size: ${CONTAINER_LOG_MAX_SIZE:-10m}
+      max-file: "3"
+
+# Our own Python services (built from the Dockerfile) read app settings and secrets from .env.
+# To run another environment from the same checkout, pass its file to Compose:
+#   docker compose --env-file .env.staging ...
+# That file sets ENV_FILE=.env.staging, so Compose substitution and the containers read the same file.
+x-python-service: &python-service
+  <<: *container-limits
+  env_file:
+    - path: ${ENV_FILE:-./.env}
+      required: false
+
+# Backend image, shared by the API (backend) and the one-shot provisioning job.
+x-backend: &backend-image
+  <<: *python-service
+  cpus: ${BACKEND_CPUS:-1.0}
+  mem_limit: ${BACKEND_MEMORY_LIMIT:-1g}
+  memswap_limit: ${BACKEND_MEMORY_LIMIT:-1g}
+  build:
+    context: .
+    target: runtime
+    args:
+      DEPENDENCY_GROUP: backend
+  image: goldenguide-backend:py314
+
+# Environment shared by the Python services. Each service adds its own OTEL_SERVICE_NAME.
+x-python-env: &python-env
+  CONFIG_PATH: /app/configs
+  APP_ENV: ${APP_ENV:-development}
+  LOG_FORMAT: ${CONTAINER_LOG_FORMAT:-json}
+  # Set this to a remote collector, or explicitly empty to disable local trace export in development.
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT-http://otel-collector:4317}
+  OTEL_EXPORTER_OTLP_INSECURE: ${OTEL_EXPORTER_OTLP_INSECURE:-true}
+
+services:
+  # --- Authentication (profile: auth) ---------------------------------------------------------
+  keycloak:
+    <<: *container-limits
+    cpus: ${AUTH_CPUS:-1.0}
+    mem_limit: ${AUTH_MEMORY_LIMIT:-1g}
+    memswap_limit: ${AUTH_MEMORY_LIMIT:-1g}
+    image: quay.io/keycloak/keycloak:26.8.0
+    # Not in all-dev: development runs with sign-in off (AUTH_MODE=disabled, LOCAL_ADMIN=true). Add --profile auth
+    # to test the real sign-in flow locally.
+    profiles: [auth, all]
+    restart: unless-stopped
+    # This imported realm is the development identity provider. Institutional deployments use
+    # their managed OIDC provider; do not expose Keycloak's development server as production IAM.
+    command: [start-dev, --import-realm]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:-admin}
+      KC_HOSTNAME: ${KC_HOSTNAME:-http://keycloak.localhost:8081}
+      KC_HTTP_PORT: "8081"
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+
+      KC_TEST_ADMIN_ROLE: ${KC_TEST_ADMIN_ROLE:-goldenguide-admin}
+      KC_TEST_ADMIN_USERNAME: ${KC_TEST_ADMIN_USERNAME:-admin}
+      KC_TEST_ADMIN_PASSWORD: ${KC_TEST_ADMIN_PASSWORD:-admin}
+
+    ports:
+      - "${AUTH_BIND_ADDRESS:-127.0.0.1}:${AUTH_PORT:-8081}:8081"
+    volumes:
+      - ./deploy/keycloak/realm.json:/opt/keycloak/data/import/goldenguide-realm.json:ro
+      - keycloak_data:/opt/keycloak/data
+    networks:
+      public:
+        aliases: [keycloak.localhost]
+
+  # --- Observability (profile: observability) -------------------------------------------------
+  # Flow: Alloy tails container logs -> Loki; services send traces via OTLP -> collector -> Jaeger;
+  # Grafana queries both.
+  # Multi-machine: run the full `observability` profile on one machine. Every other machine runs
+  # only `log-shipper` (Alloy) with LOKI_PUSH_URL pointing at that machine, and sends traces there
+  # via OTEL_EXPORTER_OTLP_ENDPOINT. MACHINE_NAME labels each log line with its source host.
+  loki:
+    <<: *container-limits
+    image: grafana/loki:3.7.3
+    profiles: [observability, all, all-dev]
+    restart: unless-stopped
+    command: [-config.file=/etc/loki/local-config.yaml]
+    volumes:
+      - ./deploy/loki/loki.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    ports:
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:3100:3100"
+    networks: [observability]
+
+  alloy:
+    <<: *container-limits
+    image: grafana/alloy:v1.19.2
+    profiles: [observability, log-shipper, all, all-dev]
+    restart: unless-stopped
+    command: [run, --server.http.listen-addr=0.0.0.0:12345, --storage.path=/var/lib/alloy/data, /etc/alloy/config.alloy]
+    environment:
+      LOKI_PUSH_URL: ${LOKI_PUSH_URL:-http://loki:3100/loki/api/v1/push}
+      MACHINE_NAME: ${MACHINE_NAME:-local}
+    volumes:
+      - ./deploy/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy_data:/var/lib/alloy
+    ports:
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:12345:12345"
+    depends_on:
+      loki:
+        condition: service_started
+        required: false
+    networks: [observability]
+
+  grafana:
+    <<: *container-limits
+    image: grafana/grafana:12.2.0
+    profiles: [observability, all, all-dev]
+    restart: unless-stopped
+    ports:
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./deploy/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+    depends_on: [loki, jaeger]
+    networks: [observability]
+
+  otel-collector:
+    <<: *container-limits
+    image: otel/opentelemetry-collector:0.162.0
+    profiles: [observability, all, all-dev]
+    restart: unless-stopped
+    command: [--config=/etc/otelcol/config.yaml]
+    volumes:
+      - ./deploy/otel/collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:4317:4317"
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:4318:4318"
+    depends_on: [jaeger]
+    networks: [public, private, observability]
+
+  jaeger:
+    <<: *container-limits
+    image: jaegertracing/jaeger:2.22.0
+    profiles: [observability, all, all-dev]
+    restart: unless-stopped
+    ports:
+      - "${OBSERVABILITY_BIND_ADDRESS:-127.0.0.1}:16686:16686"
+    # Local traces remain ephemeral, as before; durable trace storage is a deployment choice.
+    # The image declares VOLUME /tmp; tmpfs keeps it in memory instead of an anonymous volume.
+    tmpfs: [/tmp]
+    networks: [observability]
+
+  # --- Public ingress (profile: tunnel) -------------------------------------------------------
+  # Cloudflare Tunnel publishes the frontend without opening inbound ports.
+  tunnel:
+    <<: *container-limits
+    image: cloudflare/cloudflared:2026.10.5
+    profiles: [tunnel, all]
+    restart: unless-stopped
+    command: [tunnel, --no-autoupdate, run]
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      frontend:
+        condition: service_healthy
+        required: false
+    networks: [public]
+
+  # --- Private network between machines (profile: tailnet) ------------------------------------
+  # Joins this machine to your Tailscale network so services split across machines (PC, laptop,
+  # cloud) can reach each other privately, without exposing anything to the internet.
+  # Host networking makes the whole machine the Tailscale node: other machines reach any port
+  # this host publishes at its Tailscale IP. Point clients there in their .env, e.g.
+  #   OTEL_EXPORTER_OTLP_ENDPOINT=http://100.x.y.z:4317   LOCAL_EMBEDDING_SERVICE__HOST=100.x.y.z
+  # Use Tailscale IPs rather than names: containers don't use Tailscale's DNS. Each node's IP is stable.
+  # Bind published ports to this machine's Tailscale IP (*_BIND_ADDRESS=100.x.y.z) to make them
+  # reachable only over Tailscale. That address exists only once this container is up.
+  # Requires TS_AUTHKEY: a reusable, tagged key from the Tailscale admin console (Settings -> Keys).
+  tailscale:
+    <<: *container-limits
+    image: tailscale/tailscale:v1.104.4
+    profiles: [tailnet]
+    restart: unless-stopped
+    network_mode: host
+    # Fail fast with a clear message instead of waiting for an interactive browser login.
+    entrypoint: [sh, -ec, ': "$${TS_AUTHKEY:?Set TS_AUTHKEY}" "$${TS_HOSTNAME:?Set MACHINE_NAME}"; exec /usr/local/bin/containerboot']
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:-}
+      TS_HOSTNAME: ${MACHINE_NAME:-}
+      # Identity is saved here. A logged-in node ignores the key; a node removed in the admin
+      # console logs back in with it on the next start.
+      TS_STATE_DIR: /var/lib/tailscale
+      # Kernel WireGuard (not userspace) for the lowest latency.
+      TS_USERSPACE: "false"
+      TS_ACCEPT_DNS: "false"
+      TS_ENABLE_HEALTH_CHECK: "true"
+      TS_LOCAL_ADDR_PORT: 127.0.0.1:${TAILSCALE_HEALTH_PORT:-9002}
+    devices: [/dev/net/tun:/dev/net/tun]
+    cap_add: [NET_ADMIN]
+    volumes:
+      - tailscale_state:/var/lib/tailscale
+    healthcheck:
+      test: [CMD-SHELL, 'wget -qO- "http://$${TS_LOCAL_ADDR_PORT}/healthz"']
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+  # --- Data stores (profiles: vector-store, object-store, database, state_store) --------------
+  qdrant:
+    <<: *container-limits
+    cpus: ${VECTOR_STORE_CPUS:-1.0}
+    mem_limit: ${VECTOR_STORE_MEMORY_LIMIT:-2g}
+    memswap_limit: ${VECTOR_STORE_MEMORY_LIMIT:-2g}
+    # Freeze the existing local image, avoiding an implicit storage-format upgrade.
+    image: qdrant/qdrant@sha256:0425e3e03e7fd9b3dc95c4214546afe19de2eb2e28ca621441a56663ac6e1f46
+    profiles: [vector-store, all, all-dev]
+    restart: unless-stopped
+    ports:
+      - "${VECTOR_STORE_BIND_ADDRESS:-127.0.0.1}:${VECTOR_STORE_HTTP_PORT:-6333}:6333"
+      - "${VECTOR_STORE_BIND_ADDRESS:-127.0.0.1}:${VECTOR_STORE_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__API_KEY: ${VECTOR_STORE__QDRANT__API_KEY:-}
+    healthcheck:
+      # The pinned image includes Bash but no curl/wget. Probe its local TCP listener.
+      test: [CMD, bash, -c, "</dev/tcp/127.0.0.1/6333"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [public, private]
+
+  minio:
+    <<: *container-limits
+    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    profiles: [object-store, all, all-dev]
+    restart: unless-stopped
+    command: [server, /data, --console-address, ":9001"]
+    ports:
+      - "${OBJECT_STORE_BIND_ADDRESS:-127.0.0.1}:${OBJECT_STORE_PORT:-9000}:9000"
+      - "${OBJECT_STORE_BIND_ADDRESS:-127.0.0.1}:${OBJECT_STORE_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    environment:
+      MINIO_ROOT_USER: ${BLOB_STORAGE__MINIO__ACCESS_KEY:-}
+      MINIO_ROOT_PASSWORD: ${BLOB_STORAGE__MINIO__SECRET_KEY:-}
+    healthcheck:
+      test: [CMD, mc, ready, local]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks: [public, private]
+
+  postgres:
+    <<: *container-limits
+    cpus: ${DATABASE_CPUS:-1.0}
+    mem_limit: ${DATABASE_MEMORY_LIMIT:-1g}
+    memswap_limit: ${DATABASE_MEMORY_LIMIT:-1g}
+    image: postgres:16
+    profiles: [database, all, all-dev]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB__POSTGRES__USER:-}
+      POSTGRES_PASSWORD: ${DB__POSTGRES__PASSWORD:-}
+      POSTGRES_DB: ${DB__POSTGRES__DATABASE:-goldenguide}
+    ports:
+      - "${DATABASE_BIND_ADDRESS:-127.0.0.1}:${DATABASE_PORT:-5432}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks: [public, private]
+
+  # One-shot job: creates the application database(s) once Postgres is healthy, then exits.
+  db-bootstrap:
+    <<: *container-limits
+    image: postgres:16
+    profiles: [database, all, all-dev]
+    restart: "no"
+    command: [psql, --host=postgres, "--username=${DB__POSTGRES__USER:-}", --dbname=postgres, --set=ON_ERROR_STOP=1, "--set=databases=${DB__POSTGRES__DATABASE:-goldenguide}", --file=/bootstrap.sql]
+    # The postgres image declares VOLUME for its data dir; this client-only job never uses it.
+    # tmpfs fills that path so Docker doesn't leave an anonymous volume behind.
+    tmpfs: [/var/lib/postgresql/data]
+    environment:
+      PGPASSWORD: ${DB__POSTGRES__PASSWORD:-}
+    volumes:
+      - ./docker/postgres/bootstrap.sql:/bootstrap.sql:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [private]
+
+  redis:
+    <<: *container-limits
+    image: redis:7-alpine
+    profiles: [state_store, all, all-dev]
+    restart: unless-stopped
+    # Redis stores critical auth state as well as caches. Persist acknowledged state across restarts.
+    command: [sh, -ec, 'exec redis-server --appendonly yes --appendfsync everysec --requirepass "$${REDIS_PASSWORD:?Set CACHE__REDIS__PASSWORD}"']
+    environment:
+      REDIS_PASSWORD: ${CACHE__REDIS__PASSWORD:-}
+      REDISCLI_AUTH: ${CACHE__REDIS__PASSWORD:-}
+    ports:
+      - "${STATE_STORE_BIND_ADDRESS:-127.0.0.1}:${STATE_STORE_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [CMD-SHELL, 'redis-cli ping | grep -q PONG']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [public, private]
+
+  # --- Application (profiles: provision, embedding-gpu, embedding-cpu, backend, frontend) -----
+  # One-shot job: runs migrations, creates buckets and vector collections, then exits. The backend waits for it.
+  provision:
+    <<: *backend-image
+    cpus: ${PROVISION_CPUS:-1.0}
+    mem_limit: ${PROVISION_MEMORY_LIMIT:-1g}
+    memswap_limit: ${PROVISION_MEMORY_LIMIT:-1g}
+    profiles: [provision, all, all-dev]
+    restart: "no"
+    command: [python, -m, backend.core.startup.provision]
+    environment:
+      <<: *python-env
+      OTEL_SERVICE_NAME: goldenguide-provision
+    depends_on:
+      db-bootstrap:
+        condition: service_completed_successfully
+        required: false
+      qdrant:
+        condition: service_healthy
+        required: false
+      minio:
+        condition: service_healthy
+        required: false
+    networks: [public, private]
+
+  # Embedding API on the NVIDIA GPU. local-embedding-cpu is the same service on CPU.
+  local-embedding-gpu:
+    <<: *python-service
+    cpus: ${EMBEDDING_GPU_CPUS:-2.0}
+    mem_limit: ${EMBEDDING_GPU_MEMORY_LIMIT:-4g}
+    memswap_limit: ${EMBEDDING_GPU_MEMORY_LIMIT:-4g}
+    build:
+      context: .
+      target: runtime
+      args:
+        DEPENDENCY_GROUP: embedding-gpu
+    image: goldenguide-embedding-gpu:py314
+    # Not in all/all-dev: pick embedding-gpu or embedding-cpu (or neither, if another machine runs it).
+    profiles: [embedding-gpu]
+    restart: unless-stopped
+    command: [uvicorn, embedding_service.main:app, --host, 0.0.0.0, --port, "8001", --ws, none]
+    environment:
+      <<: *python-env
+      EMBEDDING_RUNTIME: gpu
+      OTEL_SERVICE_NAME: goldenguide-embedding-gpu
+      OMP_NUM_THREADS: ${EMBEDDING_THREADS:-2}
+      MKL_NUM_THREADS: ${EMBEDDING_THREADS:-2}
+      OPENBLAS_NUM_THREADS: ${EMBEDDING_THREADS:-2}
+      TOKENIZERS_PARALLELISM: "false"
+    volumes:
+      - embedding_gpu_models:/models
+    ports:
+      - "${EMBEDDING_BIND_ADDRESS:-127.0.0.1}:${EMBEDDING_GPU_PORT:-8001}:8001"
+    healthcheck:
+      test: [CMD, curl, -fsS, http://localhost:8001/health]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks: [public, private]
+
+  local-embedding-cpu:
+    <<: *python-service
+    cpus: ${EMBEDDING_CPU_CPUS:-2.0}
+    mem_limit: ${EMBEDDING_CPU_MEMORY_LIMIT:-4g}
+    memswap_limit: ${EMBEDDING_CPU_MEMORY_LIMIT:-4g}
+    build:
+      context: .
+      target: runtime
+      args:
+        DEPENDENCY_GROUP: embedding-cpu
+    image: goldenguide-embedding-cpu:py314
+    profiles: [embedding-cpu]
+    restart: unless-stopped
+    command: [uvicorn, embedding_service.main:app, --host, 0.0.0.0, --port, "8002", --ws, none]
+    environment:
+      <<: *python-env
+      EMBEDDING_RUNTIME: cpu
+      OTEL_SERVICE_NAME: goldenguide-embedding-cpu
+      OMP_NUM_THREADS: ${EMBEDDING_THREADS:-2}
+      MKL_NUM_THREADS: ${EMBEDDING_THREADS:-2}
+      OPENBLAS_NUM_THREADS: ${EMBEDDING_THREADS:-2}
+      TOKENIZERS_PARALLELISM: "false"
+    volumes:
+      - embedding_cpu_models:/models
+    ports:
+      - "${EMBEDDING_BIND_ADDRESS:-127.0.0.1}:${EMBEDDING_CPU_PORT:-8002}:8002"
+    healthcheck:
+      test: [CMD, curl, -fsS, http://localhost:8002/health]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+    networks: [public, private]
+
+  backend:
+    <<: *backend-image
+    profiles: [backend, all, all-dev]
+    restart: unless-stopped
+    command: [uvicorn, backend.main:app, --host, 0.0.0.0, --port, "8080", --ws, none]
+    environment:
+      <<: *python-env
+      OTEL_SERVICE_NAME: goldenguide-api
+      SERVE_FRONTEND: "false"
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-${APP_NETWORK_SUBNET:-172.30.0.0/24}}
+    ports:
+      - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:${BACKEND_PORT:-8082}:8080"
+    healthcheck:
+      test: [CMD, curl, -fsS, http://localhost:8080/health/live]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      provision:
+        condition: service_completed_successfully
+        required: false
+      redis:
+        condition: service_healthy
+        required: false
+      local-embedding-gpu:
+        condition: service_healthy
+        required: false
+      local-embedding-cpu:
+        condition: service_healthy
+        required: false
+    networks: [public, private]
+
+  # Nginx: serves the static UI and proxies /api to the backend. The browser only talks to this origin.
+  frontend:
+    <<: *container-limits
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+    image: goldenguide-frontend:static
+    profiles: [frontend, all, all-dev]
+    restart: unless-stopped
+    environment:
+      BACKEND_ORIGIN: ${BACKEND_ORIGIN:-http://backend:8080}
+      NGINX_ENVSUBST_FILTER: ^BACKEND_ORIGIN$
+    ports:
+      - "${FRONTEND_BIND_ADDRESS:-127.0.0.1}:${FRONTEND_PORT:-8080}:8080"
+    healthcheck:
+      # 127.0.0.1, not localhost: busybox wget tries ::1 first, and Nginx listens on IPv4 only.
+      test: [CMD, wget, -qO-, http://127.0.0.1:8080/health]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    depends_on:
+      backend:
+        condition: service_healthy
+        required: false
+    networks: [public]
+
+volumes:
+  pg_data:
+  qdrant_data:
+  minio_data:
+  redis_data:
+  loki_data:
+  alloy_data:
+  grafana_data:
+  keycloak_data:
+  embedding_gpu_models:
+  embedding_cpu_models:
+  tailscale_state:
+
+# public: reachable via published ports. private: internal only, no outbound internet.
+# observability: telemetry stack, isolated from app traffic.
+networks:
+  public:
+    ipam:
+      config:
+        - subnet: ${APP_NETWORK_SUBNET:-172.30.0.0/24}
+  private:
+    internal: true
+  observability:

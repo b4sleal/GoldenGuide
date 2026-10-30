@@ -1,0 +1,26 @@
+catalog:
+  profiles:
+    db_evidence:
+      balanced:
+        detailed:
+          max_records: 5
+          max_tokens: 5000
+
+        compact:
+          max_records: 10
+          max_tokens: 15000
+
+        minimal:
+          max_tokens: 30000
+
+      deep:
+        detailed:
+          max_records: 10
+          max_tokens: 10000
+
+        compact:
+          max_records: 35
+          max_tokens: 25000
+
+        minimal:
+          max_tokens: 50000

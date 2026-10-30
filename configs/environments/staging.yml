@@ -1,0 +1,3 @@
+# Provider endpoints inherit environment-aware defaults from catalogs/providers/infra.yml.
+# Add environment-specific overrides here only when they differ from the shared configuration.
+catalog: {}

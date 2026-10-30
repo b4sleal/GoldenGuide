@@ -1,0 +1,45 @@
+catalog:
+  profiles:
+    retrieval_profiles:
+      fast_local:
+        vector_collection: ${catalog.profiles.vector_collection.dense}
+        vector_retrieval: ${catalog.profiles.retrieval.dense_fast}
+        db_evidence: ${catalog.profiles.db_evidence.deep}
+        llm:
+          primary: ${catalog.providers.llm.gemini_deep}
+
+      balanced_local:
+        vector_collection: ${catalog.profiles.vector_collection.sparse}
+        vector_retrieval: ${catalog.profiles.retrieval.hybrid_fast}
+        db_evidence: ${catalog.profiles.db_evidence.deep}
+        llm:
+          primary: ${catalog.providers.llm.gemini_deep}
+        fallback:
+          - ${...fast_local}
+
+      fast_cloud:
+        vector_collection: ${catalog.profiles.vector_collection.sparse}
+        vector_retrieval: ${catalog.profiles.retrieval.hybrid_balanced}
+        db_evidence: ${catalog.profiles.db_evidence.deep}
+        llm:
+          primary: ${catalog.providers.llm.gemini_deep}
+        fallback:
+          - ${...balanced_local}
+
+      balanced_cloud:
+        vector_collection: ${catalog.profiles.vector_collection.multi}
+        vector_retrieval: ${catalog.profiles.retrieval.colbert_deep}
+        db_evidence: ${catalog.profiles.db_evidence.deep}
+        llm:
+          primary: ${catalog.providers.llm.gemini_deep}
+        fallback:
+          - ${ ...fast_cloud}
+
+      deep_cloud:
+        vector_collection: ${catalog.profiles.vector_collection.multi_sparse}
+        vector_retrieval: ${catalog.profiles.retrieval.hybrid_colbert}
+        db_evidence: ${catalog.profiles.db_evidence.deep}
+        llm:
+          primary: ${catalog.providers.llm.gemini_deep}
+        fallback:
+          - ${...balanced_cloud}

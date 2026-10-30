@@ -1,0 +1,30 @@
+catalog:
+  providers:
+    llm:
+      gemini_fast:
+        provider: gemini
+        model_name: gemini-2.5-flash
+        api_key: ${secrets:MODEL_PROVIDER__GEMINI__API_KEY}
+
+      gemini_deep:
+        provider: gemini
+        model_name: gemini-3.5-flash-lite
+        api_key: ${secrets:MODEL_PROVIDER__GEMINI__API_KEY}
+
+      openai_mid:
+        provider: openai
+        model_name: gpt-4o-mini
+        api_key: ${secrets:MODEL_PROVIDER__OPENAI__API_KEY}
+
+    embedding:
+      gemini_mid:
+        provider: gemini
+        model_name: gemini-embedding-001
+        dimension: 768
+        api_key: ${secrets:MODEL_PROVIDER__GEMINI__API_KEY}
+
+      openai_deep:
+        provider: openai
+        model_name: text-embedding-3-large
+        dimension: 3072
+        api_key: ${secrets:MODEL_PROVIDER__OPENAI__API_KEY}

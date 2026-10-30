@@ -1,0 +1,43 @@
+name: Nightly ingestion
+
+on:
+  schedule:
+    - cron: '0 5 * * *'
+      timezone: America/Toronto
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-ingestion
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    # Manual runs also use the default branch, where reviewed ingestion code lives.
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Collect, import and index; wait for each outcome
+        env:
+          SERVICE_KEY: ${{ secrets.GOLDENGUIDE_NIGHTLY_KEY }}
+          BASE_URL: ${{ vars.GOLDENGUIDE_BASE_URL }}
+          REGISTRATION_TERMS: ${{ vars.GOLDENGUIDE_REGISTRATION_TERMS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SERVICE_KEY" || { echo 'Missing GOLDENGUIDE_NIGHTLY_KEY'; exit 1; }
+          test -n "$BASE_URL" || { echo 'Missing GOLDENGUIDE_BASE_URL'; exit 1; }
+          printf '%s' "$SERVICE_KEY" | python3 scripts/nightly_ingestion.py \
+            --base-url "$BASE_URL" --terms "$REGISTRATION_TERMS"
+      - name: Summarize result
+        if: always()
+        env:
+          RESULT: ${{ job.status }}
+        run: |
+          printf 'Nightly ingestion: **%s**. See step logs for run IDs and final statuses.\n' "$RESULT" >> "$GITHUB_STEP_SUMMARY"

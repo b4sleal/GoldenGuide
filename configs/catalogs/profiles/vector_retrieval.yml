@@ -1,0 +1,63 @@
+catalog:
+  profiles:
+    retrieval:
+      # search: candidates returned by the vector search.
+      # rerank: the cross-encoder re-scores the candidates against the question and keeps the best
+      #   rerank.top_k (the answer then uses the first chunks of those). max_score_gap drops hits
+      #   more than that below the best one (logits; 2.5 kept every correct page in tests/eval).
+      # whole_documents: when the pages behind those chunks fit max_tokens together (estimated
+      #   tokens), the answer gets each page whole instead of its chunks. max_score_gap: only pages
+      #   within that of the best page go whole; weaker ones keep their chunks (needs rerank scores).
+      dense_fast:
+        search:
+          top_k: 10
+        whole_documents:
+          max_tokens: 30000
+
+      dense_balanced:
+        search:
+          top_k: 20
+        whole_documents:
+          max_tokens: 30000
+
+      hybrid_fast:
+        search:
+          top_k: 20
+        whole_documents:
+          max_tokens: 30000
+
+      hybrid_balanced:
+        search:
+          top_k: 40
+        rerank:
+          top_k: 10
+          reranker:
+            primary: ${catalog.providers.local_reranker.cross_encoder}
+          max_score_gap: 2.5
+        whole_documents:
+          max_tokens: 30000
+          max_score_gap: 1.0
+
+      colbert_deep:
+        search:
+          top_k: 100
+        rerank:
+          top_k: 20
+          reranker:
+            primary: ${catalog.providers.local_reranker.cross_encoder}
+          max_score_gap: 2.5
+        whole_documents:
+          max_tokens: 30000
+          max_score_gap: 1.0
+
+      hybrid_colbert:
+        search:
+          top_k: 60
+        rerank:
+          top_k: 20
+          reranker:
+            primary: ${catalog.providers.local_reranker.cross_encoder}
+          max_score_gap: 2.5
+        whole_documents:
+          max_tokens: 30000
+          max_score_gap: 1.0

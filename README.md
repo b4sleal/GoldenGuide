@@ -1,125 +1,128 @@
+# <img src="src/frontend/GoldenGuideLogo.png" alt="GoldenGuide logo" width="40"/> GoldenGuide
 
-# <img src="frontend/GoldenGuideLogo.png" alt="logo" width="40"/> GoldenGuide
+> A grounded academic assistant for Wilfrid Laurier University students.
 
-> **A Next-Generation AI Academic Advisor for Wilfrid Laurier University.**
+GoldenGuide answers questions about courses, term offerings, prerequisites, registration, programs,
+policies, deadlines and university services. Every answer is built only from official WLU sources
+(the WLU websites, the Academic Calendar and LORIS registration data) and links to the pages it
+used, so students can always check the original.
 
-GoldenGuide is an intelligent chatbot designed to modernize the student experience at WLU. 
-Unlike **HawkBot** that relies on pre-programmed click-based questions, GoldenGuide uses **Retrieval-Augmented Generation (RAG)** to understand complex questions and provide answers based on real-time university data.
+It is a retrieval-augmented generation (RAG) system with one important difference from a typical
+chatbot: **factual questions are answered from typed database queries**, not from whatever text a
+vector search happens to find. "Which CP sections run on Fridays this winter?" becomes a precise
+PostgreSQL lookup; "how do I appeal a grade?" uses hybrid semantic search with reranking. The
+answer model only ever sees evidence GoldenGuide actually retrieved.
 
-**Key Feature:** Every answer includes **direct source links** to the official WLU website, ensuring trust, verifiability, and easy navigation.
+**Live:** [askgoldenguide.ca](https://askgoldenguide.ca) · **Docs:** [`docs/`](docs/README.md) ·
+**Design:** [software design document (PDF)](docs/sdd/GoldenGuide-SDD.pdf)
 
-## Features
+---
 
--   **Contextual Intelligence:** Powered by Google's **Gemini Flash Latest** for fast, natural conversations.
+## What students get
 
--   **Accurate Citations:** Uses a RAG pipeline to retrieve specific university policies and link them as sources.
+- **Full current-term information.** Sections, CRNs, meeting times, rooms, instructors, seats and
+  waitlists from LORIS, shown as exact tables rather than retyped text.
+- **The whole Academic Calendar.** Course descriptions, prerequisites, corequisites, exclusions,
+  credits, programs and requirements, for the right academic year.
+- **University services and policies.** Deadlines, registration, appeals, student services and
+  more, crawled from WLU's websites and cited inline.
+- **Answers that say what they don't know.** "No records found", "this can't be looked up yet", "a
+  source was unavailable" and "results were limited" are reported as different things. A failed
+  lookup is never presented as "this doesn't exist", and GoldenGuide never invents courses, terms,
+  prerequisites, policies or links.
+- **Streaming answers** that start within seconds, with citations and working links.
 
--   **Vector Search:** Utilizes **FAISS** for low-latency semantic search over thousands of pages.
+## Engineering highlights
 
--   **Self-Updating:** Includes a custom scraper that parses the WLU sitemap to keep knowledge fresh.
+| | |
+| --- | --- |
+| **Hybrid retrieval** | Deterministic entity extraction (no LLM) → schema-validated LLM query plan → typed SQL for facts and/or Qdrant hybrid search (dense MiniLM + sparse SPLADE + ColBERT multi-vector) → cross-encoder rerank → whole-page expansion → grounded generation. A failing semantic search falls back to a simpler retrieval profile. [More](docs/chat-pipeline.md) |
+| **Hexagonal architecture** | Domain, application, infrastructure and API layers with ports and adapters; one composition root (`dependency-injector`) picks every concrete adapter. Swapping an LLM, vector store or object store is an adapter plus a YAML change. [More](docs/architecture.md) |
+| **Config-driven behaviour** | Layered YAML validated into typed Pydantic settings: providers, retrieval profiles, chunking, enrichment templates and prompts are configuration, not code. Secrets only come from the environment. [More](docs/configuration.md) |
+| **Reliable ingestion** | Every crawl, import and indexing step is a tracked background job with batches, heartbeats, crash recovery and `fresh` / `update` / `retry` modes, so failed work is retried without redoing what succeeded. Runs nightly from GitHub Actions. [More](docs/ingestion.md) |
+| **Authentication** | OpenID Connect (PKCE, nonce-verified ID tokens) with server-side Redis sessions and explicit admin/student roles. Keycloak in development; the provider-neutral design means WLU **Microsoft Entra ID** sign-in for students and faculty is a configuration change. Scoped, hashed service keys for automation. [More](docs/security.md) |
+| **Built to scale out** | Stateless API (sessions, OAuth state and rate limits in Redis), replica-safe jobs, and every service in its own container and Compose profile, so the GPU embedding box, data stores and API can run on different machines over Tailscale today. Ports map directly to AWS managed services (planned). [More](docs/architecture.md#scaling) |
+| **Observability** | Structured JSON logs across all machines (structlog → Alloy → Loki), OpenTelemetry traces (→ Collector → Jaeger), Grafana linking every log line to its trace. Every error returns a `request_id` and `trace_id`. [More](docs/observability.md) |
+| **Easy to run** | One requirement: Docker. Clone, copy `.env.dev.example` to `.env`, add an LLM key, `docker compose up`. CPU-only embedding machines are supported. [More](docs/getting-started.md) |
+| **Tested** | Unit tests at the ports, integration tests against real PostgreSQL/Redis/Qdrant (shared contract suites for adapters), a retrieval-quality evaluation, and a CI gate running every test on each pull request. [More](docs/testing.md) |
 
+## Architecture
 
-## Tech Stack
-
--   **Language:** Python 3.10+
-
--   **API Framework:** FastAPI
-
--   **AI Model:** Google Gemini Flash Latest
-
--   **Vector Database:** FAISS (Facebook AI Similarity Search)
-
--   **Scraping:** BeautifulSoup4 & Requests
-
--   **Frontend:** HTML5 / JavaScript (Fetch API)
-
-
-## Installation & Setup
-
-### 1. Clone the Repository
-
-```
-git clone [https://github.com/b4sleal/GoldenGuide.git](https://github.com/b4sleal/GoldenGuide.git)
-cd GoldenGuide
-
-```
-
-### 2. Install Dependencies
-
-Ensure you have Python installed. It is recommended to use a virtual environment.
-
-```
-pip install -r requirements.txt
-
-```
-
-### 3. Configure Environment Variables
-
-Create a `.env` file in the root directory and add your Google AI API key:
-
-```
-GOOGLE_API_KEY="your_api_key_here"
-
-```
-
-## Usage Guide
-
-The system consists of three parts: **Scraping**, **Indexing**, and **Running**.
-
-### Step 1: Build the Knowledge Base (Scraping)
-
-Before the bot can answer questions, it needs data. Run the scraper to fetch pages from the WLU sitemap.
-
-```
-# This will save JSON files to the /scraped_pages directory
-python -m backend.scraping.wlu_scraper
-
+```mermaid
+flowchart LR
+    U[Student] --> CF[Cloudflare Tunnel] --> FE[Nginx<br/>static UI + /api proxy]
+    FE --> API[FastAPI backend<br/>chat, auth, admin, jobs]
+    API --> PG[(PostgreSQL<br/>courses, terms, pages)]
+    API --> QD[(Qdrant<br/>vectors)]
+    API --> RD[(Redis<br/>sessions, rate limits, caches)]
+    API --> MN[(MinIO<br/>raw sources)]
+    API --> EMB[Embedding service<br/>GPU or CPU]
+    API --> LLM[LLMs<br/>Gemini, OpenAI, Claude]
+    API --> IDP[OIDC<br/>Keycloak / Entra]
 ```
 
-### Step 2: Create the Vector Index (Embedding)
+A modular monolith plus a separate embedding service, with independently operated data stores. The
+full picture, including jobs, observability and the backend layers, is in
+[architecture](docs/architecture.md).
 
-Convert the scraped text into mathematical vectors so the AI can understand them.
+## Technology
 
+| Concern | Choice |
+| --- | --- |
+| Language & packaging | Python 3.14, [uv](https://docs.astral.sh/uv/) with a locked `uv.lock` and one dependency group per service |
+| API | FastAPI, Uvicorn, Pydantic v2, NDJSON streaming |
+| Architecture | Hexagonal / DDD, `dependency-injector`, provider registries |
+| Configuration | OmegaConf layered YAML → typed Pydantic settings; secrets via a `SecretReader` port |
+| Structured data | PostgreSQL 16, SQLAlchemy 2 (async, asyncpg), Alembic migrations |
+| Vector search | Qdrant: dense, sparse (SPLADE) and multi-vector (ColBERT) collections, hybrid fusion |
+| Models | Local embedding service (sentence-transformers, FastEmbed: MiniLM, ColBERT, SPLADE, cross-encoder rerankers) on GPU or CPU; Gemini, OpenAI and Anthropic Claude adapters; the answer model is chosen per retrieval profile |
+| Objects | MinIO (S3-compatible) |
+| State & caching | Redis with AOF persistence |
+| Collection | Async crawler on httpx (robots.txt, ETag/Last-Modified), BeautifulSoup, pypdf, LangChain text splitters |
+| Authentication | OIDC with Authlib + joserfc; Keycloak (dev), Microsoft Entra ID (planned) |
+| Observability | OpenTelemetry, Jaeger, Grafana Alloy, Loki, Grafana, structlog |
+| Infrastructure | Docker Compose profiles, per-container CPU/RAM limits, Tailscale for multi-machine, Cloudflare Tunnel for public ingress |
+| Quality | pytest (unit + integration, `pytest-asyncio`, `pytest-cov`) run on every pull request by GitHub Actions; Ruff and Pyright are installed for manual checks |
+
+## Quick start
+
+```sh
+git clone https://github.com/b4sleal/GoldenGuide.git && cd GoldenGuide
+cp .env.dev.example .env                  # working local defaults; add MODEL_PROVIDER__GEMINI__API_KEY
+docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile all-dev --profile embedding-gpu up -d --build
 ```
-# This generates 'vector_index.faiss' and 'metadata.pkl' in /data/faiss
-python -m backend.vectorstore.build_index
 
-```
+Open http://localhost:8080. Without an NVIDIA GPU, use `--profile embedding-cpu` instead. Loading
+data and every service URL are in [getting started](docs/getting-started.md). Staging and production
+use their own env files and Cloudflare tunnels ([docker](docs/docker.md#staging-and-environment-files));
+type hints from the Docker venv without a local `.venv` are in
+[editor setup](docs/getting-started.md#editor-setup-type-hints-from-docker).
 
-### Step 3: Run the Server
+## Status and roadmap
 
-Launch the FastAPI backend.
+Implemented:
 
-```
-uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+- Streaming chat with inline citations, link resolution and record tables
+- Structured retrieval for courses, course terms (LORIS sections) and programs
+- Hybrid semantic retrieval with cross-encoder reranking and whole-page expansion
+- Source collection for the Academic Calendar, three WLU websites and LORIS, with tracked jobs
+- Indexing of courses, course terms and pages; admin document uploads
+- OIDC sign-in via Keycloak with Redis-backed sessions; admin role and scoped service keys
+- Nightly ingestion from GitHub Actions; CI running every test on each pull request
+- Docker Compose for development, staging and production, across multiple machines
 
-```
+Planned:
 
-### Step 4: Chat!
-
-On your phone or laptop, open your browser and navigate to: `http://x.x.x.x:8000/chat`
-
-_(Note: Use your IPv4 address, e.g., `https://192.168.0.2/chat`)_
-
-## Project Structure
-
-```
-GoldenGuide/
-├── frontend/              # HTML5 Frontend, index.html
-├── backend/
-│   ├── chatbot/           # Core RAG logic (Context injection, Prompt engineering)
-│   ├── processing/        # Text chunking and Embedding generation
-│   ├── scraping/          # WLU Sitemap parser and cleaner
-│   ├── vectorstore/       # Generator vectors and storing the FAISS index (generated files)
-│   └── main.py            # FastAPI entry point
-├── data/                  # persistent storage
-│   ├── scraped_pages/     # Raw JSON data from scraper
-│   └── faiss/             # faiss index and metadata
-├── .env                   # API Keys (Not committed)
-└── requirements.txt       # Python dependencies
-
-```
+- **Microsoft Entra ID sign-in** for WLU students and faculty (provider-neutral contracts already in
+  place)
+- **Course syllabi and faculty documents** as sources, and faculty-specific roles
+- **AWS deployment** (RDS, ElastiCache, S3, ECS, Secrets Manager)
+- Question routing to cheaper retrieval profiles for simple questions
+- Chat feedback, a readiness endpoint, and a durable job worker
+- Open decision: whether chat should require a student sign-in (WLU's call)
 
 ## Documentation
 
-For a deep dive into the system architecture, design rationale, and the mathematics behind the vector search, please refer to the [**Technical Design Document**](./GoldenGuide%20TDD.pdf).
+Start at [`docs/README.md`](docs/README.md): getting started, architecture, chat pipeline,
+ingestion, configuration, security, API, observability, testing and Docker operations. Engineering
+standards for contributors (people and AI assistants) are in [`docs/agents/`](docs/agents/).
