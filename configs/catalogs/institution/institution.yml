@@ -1,0 +1,6 @@
+catalog:
+  # The institution this deployment serves. Code decides how these are used.
+  institution:
+    code: WLU
+    timezone: America/Toronto
+    registration_url: https://loris.wlu.ca/register/ssb/registration/registration

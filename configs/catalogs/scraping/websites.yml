@@ -1,0 +1,36 @@
+catalog:
+  # University websites crawled into wlu_pages as plain pages (title + body text).
+  # The Academic Calendar has its own structured scraper and is never crawled from here.
+  scraping:
+    ignored_extensions: [.pdf, .doc, .docx, .xls, .xlsx, .ppt, .pptx, .zip, .jpg, .jpeg, .png, .gif, .svg, .mp3, .mp4, .ics]
+
+    websites:
+      wlu:
+        site_name: wlu_ca
+        allowed_domains: [www.wlu.ca, wlu.ca]
+        # The sitemap is not fully inclusive, so links found on pages are crawled too.
+        sitemap_urls: [https://www.wlu.ca/sitemap.xml]
+        seed_urls: [https://www.wlu.ca/home.html]
+        content_selector: main
+        remove_selectors: [header, footer]
+        excluded_path_patterns: [/news/]   # Skipped for now (news archive); may be added later.
+        title_suffix: " | Wilfrid Laurier University"
+
+      students_wlu:
+        site_name: students_wlu
+        allowed_domains: [students.wlu.ca] # Dont wander!
+        sitemap_urls: [https://students.wlu.ca/sitemap.xml] # Starting point of crawl
+        seed_urls: [https://students.wlu.ca/home.html] # Starting point of crawl
+        content_selector: main             # Where content lives
+        remove_selectors: [header, footer] # More noise
+        excluded_path_patterns: [/news/]   # Noisy news archive, maybe add later
+        title_suffix: " | Wilfrid Laurier University" # remove repeated suffix in page titles
+
+      scholars_wlu:
+        site_name: scholars_wlu
+        allowed_domains: [scholars.wlu.ca]
+        sitemap_urls: [https://scholars.wlu.ca/siteindex.xml]   # A sitemap index (one sitemap per collection).
+        seed_urls: [https://scholars.wlu.ca/]
+        content_selector: "#content"
+        excluded_path_patterns: [/viewcontent.cgi]   # Full-text PDF downloads.
+        title_suffix: " | Research at Wilfrid Laurier University"
