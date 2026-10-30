@@ -123,7 +123,9 @@ Run it before and after any retrieval change; it measures quality and its number
 
 `.github/workflows/tests.yml` runs `pytest tests` (every unit and integration test, including future
 ones) on pull requests, pushes to `master`/`main`, merge queues and manual dispatch. It starts
-disposable PostgreSQL, Redis and Qdrant service containers and needs no application secrets, paid
+disposable PostgreSQL, Redis and Qdrant service containers and needs no real secrets: the workflow sets
+placeholder values for the variables the application reads when it is imported, and no test uses them to reach a
+real service. It needs no paid
 LLM credentials or access to the deployed site. Dependencies come from `uv.lock`.
 
 To make passing tests mandatory, let the `All tests` job run once, then add a branch ruleset in

@@ -47,6 +47,18 @@ jobs:
       GOLDENGUIDE_TEST_DATABASE_URL: postgresql+asyncpg://infra_test:disposable_ci_password@127.0.0.1:5432/goldenguide_test
       REDIS_TEST_URL: redis://127.0.0.1:6379/0
       QDRANT_TEST_URL: http://127.0.0.1:6333
+      # The application loads its configuration when it is imported, which needs every secret to have a value.
+      # These are placeholders: no test calls a real service or model with them.
+      DB__POSTGRES__USER: ci-placeholder
+      DB__POSTGRES__PASSWORD: ci-placeholder
+      BLOB_STORAGE__MINIO__ACCESS_KEY: ci-placeholder
+      BLOB_STORAGE__MINIO__SECRET_KEY: ci-placeholder
+      VECTOR_STORE__QDRANT__API_KEY: ci-placeholder
+      CACHE__REDIS__PASSWORD: ci-placeholder
+      LOCAL_EMBEDDING_SERVICE__API_KEY: ci-placeholder
+      MODEL_PROVIDER__GEMINI__API_KEY: ci-placeholder
+      MODEL_PROVIDER__OPENAI__API_KEY: ci-placeholder
+      EMBEDDING_RUNTIME: cpu
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
