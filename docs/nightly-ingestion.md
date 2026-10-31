@@ -1,5 +1,7 @@
 # Scheduled ingestion
 
+> **Audience:** Operators.
+
 The backend accepts source collection and indexing requests with **202 Accepted** and a response like:
 
 ```json
@@ -13,9 +15,8 @@ stay in server job records and logs, rather than HTTP responses.
 
 ## Enable the nightly workflow
 
-1. Rebuild and restart the backend with this version. The response contract changes for
-   **all nine** source/indexing endpoints; existing callers must poll instead of treating
-   the initial response as completion.
+1. Make sure the backend is running. All nine source and indexing endpoints answer `202 Accepted` and a status
+   URL, so any caller must poll that URL instead of treating the first response as completion.
 2. Generate the nightly caller's key in the running backend container:
    `docker compose exec backend python -m backend.core.startup.service_key github_actions_nightly`.
    Store the printed hash in the backend's
@@ -34,8 +35,8 @@ stay in server job records and logs, rather than HTTP responses.
 The workflow runs at **05:00 America/Toronto**, including daylight-saving adjustments.
 GitHub schedules can be delayed and require the workflow on the default branch; they are
 not an exact-time delivery guarantee. See [GitHub schedule documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
-Configure GitHub Actions failure notifications in your account; this change sends no
-separate email, Slack message or Grafana alert.
+Configure GitHub Actions failure notifications in your account: the workflow sends no separate email, Slack
+message or Grafana alert.
 
 ## Pipeline and execution limits
 
@@ -74,7 +75,7 @@ inside the persistence adapter; no schema migration is required.
 The host and its dependencies must be running. Restarts interrupt work; a future durable
 worker would be a separate adapter. Heartbeat recovery is not a fencing mechanism for
 arbitrarily paused workers or network partitions. Different job names can still operate
-on related data; this schedule orders its stages but does not provide a global ingestion lock.
+on related data; the nightly schedule orders its stages, but there is no global ingestion lock.
 
 The existing crawler treats an unavailable robots.txt policy as a disallowed host. That
 failure is logged, but currently can produce a successful run with no fetched pages.

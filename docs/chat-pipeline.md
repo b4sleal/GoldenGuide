@@ -1,5 +1,7 @@
 # How a question is answered
 
+> **Audience:** Developers.
+
 GoldenGuide is a retrieval-augmented generation (RAG) system with one important difference from a
 typical chatbot: factual questions ("what are the prerequisites for CP264?", "which CP sections run
 on Fridays this winter?") are answered from **typed database queries**, not from whatever text a

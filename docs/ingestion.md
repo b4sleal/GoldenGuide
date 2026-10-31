@@ -1,5 +1,7 @@
 # Building the knowledge base
 
+> **Audience:** Developers and operators.
+
 Ingestion is split into separate, independently runnable **jobs**. Each job records its own run
 and batch state in PostgreSQL, so success at one stage is never reported as success of the whole
 pipeline, and a failed stage can be retried without redoing work that already succeeded.

@@ -1,5 +1,7 @@
 # HTTP API
 
+> **Audience:** Developers and anyone calling the API.
+
 All application routes are under `/api/v1`. Admins can browse the interactive OpenAPI docs at
 `/docs` (admin-only). Access rules are explained in [security](security.md).
 

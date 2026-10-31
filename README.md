@@ -40,10 +40,10 @@ answer model only ever sees evidence GoldenGuide actually retrieved.
 | **Hexagonal architecture** | Domain, application, infrastructure and API layers with ports and adapters; one composition root (`dependency-injector`) picks every concrete adapter. Swapping an LLM, vector store or object store is an adapter plus a YAML change. [More](docs/architecture.md) |
 | **Config-driven behaviour** | Layered YAML validated into typed Pydantic settings: providers, retrieval profiles, chunking, enrichment templates and prompts are configuration, not code. Secrets only come from the environment. [More](docs/configuration.md) |
 | **Reliable ingestion** | Every crawl, import and indexing step is a tracked background job with batches, heartbeats, crash recovery and `fresh` / `update` / `retry` modes, so failed work is retried without redoing what succeeded. Runs nightly from GitHub Actions. [More](docs/ingestion.md) |
-| **Authentication** | OpenID Connect (PKCE, nonce-verified ID tokens) with server-side Redis sessions and explicit admin/student roles. Keycloak in development; the provider-neutral design means WLU **Microsoft Entra ID** sign-in for students and faculty is a configuration change. Scoped, hashed service keys for automation. [More](docs/security.md) |
+| **Authentication** | OpenID Connect (PKCE, nonce-verified ID tokens) with server-side Redis sessions and explicit roles (admin today). Keycloak is the identity provider; the provider-neutral design means WLU **Microsoft Entra ID** sign-in for students and faculty is largely a configuration change. Scoped, hashed service keys for automation. [More](docs/security.md) |
 | **Built to scale out** | Stateless API (sessions, OAuth state and rate limits in Redis), replica-safe jobs, and every service in its own container and Compose profile, so the GPU embedding box, data stores and API can run on different machines over Tailscale today. Ports map directly to AWS managed services (planned). [More](docs/architecture.md#scaling) |
 | **Observability** | Structured JSON logs across all machines (structlog → Alloy → Loki), OpenTelemetry traces (→ Collector → Jaeger), Grafana linking every log line to its trace. Every error returns a `request_id` and `trace_id`. [More](docs/observability.md) |
-| **Easy to run** | One requirement: Docker. Clone, copy `.env.dev.example` to `.env`, add an LLM key, `docker compose up`. CPU-only embedding machines are supported. [More](docs/getting-started.md) |
+| **Easy to run** | One requirement: Docker. Clone, copy `.env.dev.example` to `.env`, add an LLM key, `docker compose up`. A CPU-only embedding machine works with limits. [More](docs/getting-started.md#cpu-only-machines) |
 | **Tested** | Unit tests at the ports, integration tests against real PostgreSQL/Redis/Qdrant (shared contract suites for adapters), a retrieval-quality evaluation, and a CI gate running every test on each pull request. [More](docs/testing.md) |
 
 ## Architecture
@@ -79,7 +79,7 @@ full picture, including jobs, observability and the backend layers, is in
 | Objects | MinIO (S3-compatible) |
 | State & caching | Redis with AOF persistence |
 | Collection | Async crawler on httpx (robots.txt, ETag/Last-Modified), BeautifulSoup, pypdf, LangChain text splitters |
-| Authentication | OIDC with Authlib + joserfc; Keycloak (dev), Microsoft Entra ID (planned) |
+| Authentication | OIDC with Authlib + joserfc; Keycloak (staging and production), Microsoft Entra ID (planned) |
 | Observability | OpenTelemetry, Jaeger, Grafana Alloy, Loki, Grafana, structlog |
 | Infrastructure | Docker Compose profiles, per-container CPU/RAM limits, Tailscale for multi-machine, Cloudflare Tunnel for public ingress |
 | Quality | pytest (unit + integration, `pytest-asyncio`, `pytest-cov`) run on every pull request by GitHub Actions; Ruff and Pyright are installed for manual checks |
@@ -92,9 +92,10 @@ cp .env.dev.example .env                  # working local defaults; add MODEL_PR
 docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile all-dev --profile embedding-gpu up -d --build
 ```
 
-Open http://localhost:8080. Without an NVIDIA GPU, use `--profile embedding-cpu` instead. Loading
-data and every service URL are in [getting started](docs/getting-started.md). Staging and production
-use their own env files and Cloudflare tunnels ([docker](docs/docker.md#staging-and-environment-files));
+Open http://localhost:8080. Without an NVIDIA GPU, use `--profile embedding-cpu` instead (with limits, see
+[getting started](docs/getting-started.md#cpu-only-machines)). Loading data and every service URL are in
+[getting started](docs/getting-started.md). Staging and production use their own env files and Cloudflare
+tunnels ([environments](docs/environments.md));
 type hints from the Docker venv without a local `.venv` are in
 [editor setup](docs/getting-started.md#editor-setup-type-hints-from-docker).
 
@@ -123,6 +124,6 @@ Planned:
 
 ## Documentation
 
-Start at [`docs/README.md`](docs/README.md): getting started, architecture, chat pipeline,
-ingestion, configuration, security, API, observability, testing and Docker operations. Engineering
-standards for contributors (people and AI assistants) are in [`docs/agents/`](docs/agents/).
+Start at [`docs/README.md`](docs/README.md), which points to the right page for what you want to do: run it,
+understand it, change it, deploy it or look after it ([environments](docs/environments.md),
+[operations](docs/operations.md)). New to the university's systems? See the [glossary](docs/glossary.md).

@@ -1,5 +1,7 @@
 # Configuration
 
+> **Audience:** Developers and operators.
+
 Two kinds of settings, kept apart on purpose:
 
 | Kind | Where | Examples |
@@ -110,7 +112,7 @@ One env file per environment, all git-ignored; only the `.example` templates are
 | Production | `.env.prod` | `.env.prod.example`: credentials left blank |
 
 Staging and production run with `docker compose --env-file <file>`; the file sets `ENV_FILE` so the
-containers read the same values ([docker](docker.md#staging-and-environment-files)). In a real
+containers read the same values ([environments](environments.md#environment-files)). In a real
 production deployment the values come from a secret manager or the CI/CD pipeline as environment
 variables, not from a file on disk.
 

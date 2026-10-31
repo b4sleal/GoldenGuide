@@ -1,5 +1,7 @@
 # Getting started
 
+> **Audience:** Developers setting up a machine.
+
 The only requirement is **Docker**. Python, uv, databases and models all run in containers.
 
 - [Prerequisites](#prerequisites)
@@ -20,7 +22,7 @@ The only requirement is **Docker**. Python, uv, databases and models all run in 
 | [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows, macOS, Linux) or Docker Engine + Compose v2 | Runs everything |
 | One LLM API key (Gemini by default; OpenAI also supported) | Planning and answering questions. Embeddings and reranking run locally |
 | Recommended: an NVIDIA GPU with the [container toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/) | GPU embedding service. Without one, use the [CPU profile](#cpu-only-machines) |
-| ~20 GB free disk | Images (torch/CUDA are large), model weights, data volumes |
+| ~30 GB free disk | Images (torch/CUDA are large), model weights, data volumes |
 
 ## 1. Configure
 
@@ -31,7 +33,7 @@ cp .env.dev.example .env
 ```
 
 `.env` is the development file. Staging and production use `.env.staging` and `.env.prod`, created from
-`.env.staging.example` and `.env.prod.example` ([docker](docker.md#staging-and-environment-files)).
+`.env.staging.example` and `.env.prod.example` ([environments](environments.md)).
 
 `.env.dev.example` already contains working local defaults for every service, the development identity
 provider and the integration tests. The only value you must add is an LLM key:
@@ -113,8 +115,10 @@ EMBEDDING_RUNTIME=cpu
 docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile all-dev --profile embedding-cpu up -d --build
 ```
 
-CPU models are smaller than the GPU ones (e.g. a MiniLM cross-encoder instead of BGE), so answers
-can differ slightly. If the embedding service runs on another machine, leave out the embedding
+The CPU service loads only the dense MiniLM embedding model and a MiniLM cross-encoder. ColBERT and SPLADE are
+GPU-only (`configs/catalogs/providers/ml_local.yml`), and the default retrieval profile (`deep_cloud`) uses both.
+CPU-only operation with the default profile has **not been verified**, and answers will differ. If the
+embedding service runs on another machine, leave out the embedding
 profile and set `LOCAL_EMBEDDING_SERVICE__HOST` to that machine ([docker](docker.md#separate-machines)).
 
 ## Day-to-day development
@@ -136,16 +140,17 @@ Run commands inside the containers instead of installing tools locally, e.g.
 The Python packages live in the dev stack's Docker volume, so you do not need a local `.venv`. Point
 the IDE at the interpreter inside the `workspace` container, which uses the same venv as the backend:
 
+`workspace` is part of the `all-dev` profile, so it starts and stops with the dev stack. To run it alone:
+
 ```sh
-docker compose -f docker-compose.yml -f .devcontainer/compose.yml up -d workspace
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d workspace
 # One time, or after uv.lock changes. Skip if the dev stack has already started once.
-docker compose -f docker-compose.yml -f .devcontainer/compose.yml exec workspace uv sync --locked --no-default-groups --group dev-backend
-docker compose -f docker-compose.yml -f .devcontainer/compose.yml stop workspace   # when finished
+docker compose -f docker-compose.yml -f docker-compose.dev.yml exec workspace uv sync --locked --no-default-groups --group dev-backend
 ```
 
 **IntelliJ IDEA Ultimate / PyCharm Professional** (stays in your normal window, so Git works as usual):
 Settings → Project → Python Interpreter → Add Interpreter → **On Docker Compose**. Configuration files:
-`docker-compose.yml` and `.devcontainer/compose.yml`. Service: `workspace`. Interpreter path:
+`docker-compose.yml` and `docker-compose.dev.yml`. Service: `workspace`. Interpreter path:
 `/home/app/.cache/venv/bin/python`. Do not choose the "uv" or "Virtualenv" types: they run on Windows
 and fail with a working-directory error for `/app`. If the IDE reports that a local Python 3 SDK is
 needed to render docstrings, add any local Python as a second SDK; it is only used for that.

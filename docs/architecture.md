@@ -1,5 +1,7 @@
 # Architecture
 
+> **Audience:** Developers and reviewers.
+
 GoldenGuide is a **modular Python/FastAPI monolith** with a separate embedding service and
 independently operated data stores. It is deliberately not split into microservices: every part
 already runs as its own container and can move to its own machine, but the API stays one codebase
@@ -67,7 +69,7 @@ Compose profile, so it can run on the same machine or a different one.
 | `qdrant` | Pinned image digest | Vector collections. |
 | `minio` | Pinned image digest | S3-compatible object storage. |
 | `redis` | `redis:7-alpine` | Session/OAuth/rate-limit state (critical) and caches (optional). AOF persistence. |
-| `keycloak` | `quay.io/keycloak/keycloak` | Development OIDC provider with a `goldenguide` realm, admin and student roles. |
+| `keycloak` | `quay.io/keycloak/keycloak` | OIDC identity provider with a `goldenguide` realm and an admin role. Development uses `deploy/keycloak/realm.json` (optional, `--profile auth`); staging and production use `realm.hosted.json`. Runs in Keycloak's development mode ([environments](environments.md#keycloak-for-staging-and-production)). |
 | `otel-collector`, `jaeger`, `loki`, `alloy`, `grafana` | Upstream images | Traces, logs and the dashboards that link them ([observability](observability.md)). |
 | `tailscale` | Upstream image | Optional private network between machines. |
 | `tunnel` | `cloudflare/cloudflared` | Optional public ingress without opening inbound ports. |
@@ -192,7 +194,7 @@ GoldenGuide/
 │   └── eval/                 # Retrieval-quality evaluation against a running stack
 ├── docker/                   # Frontend image + Nginx template, Postgres bootstrap, dev start script, BuildKit config
 ├── deploy/                   # Config mounted into third-party services: Alloy, Loki, Grafana data sources,
-│                             #   OpenTelemetry Collector, Keycloak development realm
+│                             #   OpenTelemetry Collector, Keycloak realms (development and hosted)
 ├── scripts/                  # nightly_ingestion.py (used by GitHub Actions)
 ├── .github/workflows/        # tests.yml (all tests on every PR), nightly-ingestion.yml
 ├── docs/                     # This documentation

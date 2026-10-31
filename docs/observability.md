@@ -1,5 +1,7 @@
 # Observability
 
+> **Audience:** Operators and developers.
+
 The `observability` profile runs the full stack locally; every service is already instrumented.
 
 ```mermaid

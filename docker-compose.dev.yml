@@ -51,6 +51,21 @@ services:
     # Same group as backend so both share one venv.
     command: [start-python-service.sh, dev-backend, python, -m, backend.core.startup.provision]
 
+  # IDE tool environment (type hints, tests, Ruff): point the IDE's Docker Compose interpreter at this
+  # service. It sleeps and shares backend's venv, so it starts and stops with the rest of all-dev.
+  workspace:
+    <<: *development
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    profiles: [all-dev]
+    cpus: ${WORKSPACE_CPUS:-2.0}
+    mem_limit: ${WORKSPACE_MEMORY_LIMIT:-2g}
+    memswap_limit: ${WORKSPACE_MEMORY_LIMIT:-2g}
+    command: [sleep, infinity]
+    networks: [public, private]
+
   # Model weights stay in the base file's /models volume.
   local-embedding-gpu: *embedding-dev
 

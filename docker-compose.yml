@@ -79,6 +79,8 @@ services:
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:-admin}
       KC_HOSTNAME: ${KC_HOSTNAME:-http://keycloak.localhost:8081}
       KC_HTTP_PORT: "8081"
+      # Serves /health/ready on the in-container management port 9000 (not published).
+      KC_HEALTH_ENABLED: "true"
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
 
       KC_TEST_ADMIN_ROLE: ${KC_TEST_ADMIN_ROLE:-goldenguide-admin}
@@ -87,6 +89,13 @@ services:
 
     ports:
       - "${AUTH_BIND_ADDRESS:-127.0.0.1}:${AUTH_PORT:-8081}:8081"
+    # The image has no curl, so probe readiness over bash's /dev/tcp.
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '\"UP\"' <&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
     volumes:
       - ./deploy/keycloak/realm.json:/opt/keycloak/data/import/goldenguide-realm.json:ro
       - keycloak_data:/opt/keycloak/data
@@ -473,6 +482,10 @@ services:
         condition: service_healthy
         required: false
       local-embedding-cpu:
+        condition: service_healthy
+        required: false
+      # OIDC discovery runs at startup (AUTH_MODE=oidc), so wait until Keycloak is ready.
+      keycloak:
         condition: service_healthy
         required: false
     networks: [public, private]

@@ -1,5 +1,7 @@
 # Security model
 
+> **Audience:** Developers, operators and reviewers.
+
 - [Access policy](#access-policy)
 - [Sign-in (OIDC)](#sign-in-oidc)
 - [Local admin without sign-in](#local-admin-without-sign-in)
@@ -65,7 +67,7 @@ no GoldenGuide role and chat stays public.
 and roles, redirect URIs taken from `SITE_ORIGIN`, PKCE required, brute-force protection on, registration off,
 and one seeded user: the first GoldenGuide admin, from `KC_ADMIN_USERNAME`, `KC_ADMIN_PASSWORD` and
 `KC_ADMIN_ROLE`. Other team members are created in the console or sign in through Google as an identity provider
-inside Keycloak; roles are always assigned in Keycloak ([docker](docker.md#keycloak-for-staging-and-production)).
+inside Keycloak; roles are always assigned in Keycloak ([environments](environments.md#keycloak-for-staging-and-production)).
 It still runs in Keycloak's development mode, which suits a small team; a hardened setup or the institution's
 managed provider is the longer-term answer.
 
@@ -81,7 +83,7 @@ sign-in. A request counts as local only if:
 
 A developer's public dev hostname (a Cloudflare tunnel) is therefore not treated as local: requests
 through it carry `CF-Connecting-IP` and get no `LOCAL_ADMIN` access. Protect dev and staging hostnames
-with a Cloudflare Access policy as well ([docker](docker.md#public-hostnames-and-tunnels)).
+with a Cloudflare Access policy as well ([environments](environments.md#public-hostnames-and-tunnels)).
 
 Inside Docker no request arrives from `127.0.0.1`, so an address check alone can't identify "this
 machine". The guarantee comes from published ports binding to loopback (`*_BIND_ADDRESS=127.0.0.1`,
