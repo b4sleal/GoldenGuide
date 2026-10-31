@@ -87,7 +87,7 @@ with a Cloudflare Access policy as well ([environments](environments.md#public-h
 
 Inside Docker no request arrives from `127.0.0.1`, so an address check alone can't identify "this
 machine". The guarantee comes from published ports binding to loopback (`*_BIND_ADDRESS=127.0.0.1`,
-the default): the only route in from outside is then the tunnel. If you publish ports on a LAN or
+the default): the only route in from outside is then the tunnel. If you publish the frontend or backend on a LAN or
 Tailscale address, everyone who can reach them counts as local: turn `LOCAL_ADMIN` off or use
 `AUTH_MODE=oidc`. `LOCAL_ADMIN` is ignored when sign-in is enabled, and the backend refuses to start
 with it when `APP_ENV=production`.
@@ -170,7 +170,8 @@ Optional caches behave the other way on purpose: a cache miss or outage falls ba
 - Secrets come only from the environment through the `SecretReader` port (`${secrets:NAME}` in
   YAML is resolved at load time and never logged). The log redactor masks token-like fields.
 - Published ports bind to `127.0.0.1` by default (`*_BIND_ADDRESS`). Multi-machine traffic stays on
-  a private Tailscale network; public traffic enters only through the Cloudflare Tunnel to the
+  a private Tailscale network: each machine's `tailscale` container forwards only the ports in
+  `deploy/tailscale/serve.json`, and only to tailnet devices. Public traffic enters only through the Cloudflare Tunnel to the
   frontend, never directly to the backend or a data store.
 - The embedding service requires its own API key (`LOCAL_EMBEDDING_SERVICE__API_KEY`); Qdrant,
   MinIO, Redis and PostgreSQL all require credentials.

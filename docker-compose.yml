@@ -70,7 +70,7 @@ services:
     image: quay.io/keycloak/keycloak:26.8.0
     # Not in all-dev: development runs with sign-in off (AUTH_MODE=disabled, LOCAL_ADMIN=true). Add auth to COMPOSE_PROFILES
     # to test the real sign-in flow locally.
-    profiles: [auth, all]
+    profiles: [auth, services, all]
     restart: unless-stopped
     # This imported realm is the development identity provider. Institutional deployments use
     # their managed OIDC provider; do not expose Keycloak's development server as production IAM.
@@ -203,38 +203,41 @@ services:
     networks: [public]
 
   # --- Private network between machines (profile: tailnet) ------------------------------------
-  # Joins this machine to your Tailscale network so services split across machines (PC, laptop,
-  # cloud) can reach each other privately, without exposing anything to the internet.
-  # Host networking makes the whole machine the Tailscale node: other machines reach any port
-  # this host publishes at its Tailscale IP. Point clients there in their .env, e.g.
-  #   OTEL_EXPORTER_OTLP_ENDPOINT=http://100.x.y.z:4317   LOCAL_EMBEDDING_SERVICE__HOST=100.x.y.z
-  # Use Tailscale IPs rather than names: containers don't use Tailscale's DNS. Each node's IP is stable.
-  # Bind published ports to this machine's Tailscale IP (*_BIND_ADDRESS=100.x.y.z) to make them
-  # reachable only over Tailscale. That address exists only once this container is up.
-  # Requires TS_AUTHKEY: a reusable, tagged key from the Tailscale admin console (Settings -> Keys).
+  # Opt-in, for stacks split across machines; single-machine development never needs it.
+  # This container is its own Tailscale device (<MACHINE_NAME>-docker) and forwards the ports in
+  # deploy/tailscale/serve.json to services by name, so only tailnet devices can reach them
+  # (e.g. pc-docker.<tailnet>.ts.net:6333). Nothing is published on the host for this: published
+  # ports stay on 127.0.0.1 for local use. Works the same on Docker Desktop and Linux.
+  # A forwarded service that isn't running on this machine refuses the connection.
+  # Clients on other machines use that name, e.g. DB__POSTGRES__HOST=pc-docker.<tailnet>.ts.net.
+  # Outgoing connections to other machines currently go through the host's Tailscale app
+  # (see docs/docker.md#separate-machines for the planned Docker-only gateway).
+  # Requires TS_AUTHKEY: a tagged key from the Tailscale admin console (Settings -> Keys).
   tailscale:
     <<: *container-limits
     image: tailscale/tailscale:v1.104.4
     profiles: [tailnet]
     restart: unless-stopped
-    network_mode: host
     # Fail fast with a clear message instead of waiting for an interactive browser login.
-    entrypoint: [sh, -ec, ': "$${TS_AUTHKEY:?Set TS_AUTHKEY}" "$${TS_HOSTNAME:?Set MACHINE_NAME}"; exec /usr/local/bin/containerboot']
+    entrypoint: [sh, -ec, ': "$${TS_AUTHKEY:?Set TS_AUTHKEY}" "$${MACHINE_NAME:?Set MACHINE_NAME}"; exec /usr/local/bin/containerboot']
     environment:
       TS_AUTHKEY: ${TS_AUTHKEY:-}
-      TS_HOSTNAME: ${MACHINE_NAME:-}
+      MACHINE_NAME: ${MACHINE_NAME:-}
+      TS_HOSTNAME: ${MACHINE_NAME:-}-docker
       # Identity is saved here. A logged-in node ignores the key; a node removed in the admin
       # console logs back in with it on the next start.
       TS_STATE_DIR: /var/lib/tailscale
-      # Kernel WireGuard (not userspace) for the lowest latency.
-      TS_USERSPACE: "false"
+      # Userspace networking: no TUN device or NET_ADMIN, and serve forwarding doesn't need either.
+      TS_USERSPACE: "true"
       TS_ACCEPT_DNS: "false"
+      TS_SERVE_CONFIG: /config/serve.json
       TS_ENABLE_HEALTH_CHECK: "true"
       TS_LOCAL_ADDR_PORT: 127.0.0.1:${TAILSCALE_HEALTH_PORT:-9002}
-    devices: [/dev/net/tun:/dev/net/tun]
-    cap_add: [NET_ADMIN]
     volumes:
       - tailscale_state:/var/lib/tailscale
+      - ./deploy/tailscale/serve.json:/config/serve.json:ro
+    # public reaches Tailscale's coordination servers; private and observability reach the forwarded services.
+    networks: [public, private, observability]
     healthcheck:
       test: [CMD-SHELL, 'wget -qO- "http://$${TS_LOCAL_ADDR_PORT}/healthz"']
       interval: 10s
@@ -249,7 +252,7 @@ services:
     memswap_limit: ${VECTOR_STORE_MEMORY_LIMIT:-2g}
     # Freeze the existing local image, avoiding an implicit storage-format upgrade.
     image: qdrant/qdrant@sha256:0425e3e03e7fd9b3dc95c4214546afe19de2eb2e28ca621441a56663ac6e1f46
-    profiles: [vector-store, all, all-dev]
+    profiles: [vector-store, services, all, all-dev]
     restart: unless-stopped
     ports:
       - "${VECTOR_STORE_BIND_ADDRESS:-127.0.0.1}:${VECTOR_STORE_HTTP_PORT:-6333}:6333"
@@ -269,7 +272,7 @@ services:
   minio:
     <<: *container-limits
     image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-    profiles: [object-store, all, all-dev]
+    profiles: [object-store, services, all, all-dev]
     restart: unless-stopped
     command: [server, /data, --console-address, ":9001"]
     ports:
@@ -294,7 +297,7 @@ services:
     mem_limit: ${DATABASE_MEMORY_LIMIT:-1g}
     memswap_limit: ${DATABASE_MEMORY_LIMIT:-1g}
     image: postgres:16
-    profiles: [database, all, all-dev]
+    profiles: [database, services, all, all-dev]
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB__POSTGRES__USER:-}
@@ -316,7 +319,7 @@ services:
   db-bootstrap:
     <<: *container-limits
     image: postgres:16
-    profiles: [database, all, all-dev]
+    profiles: [database, services, all, all-dev]
     restart: "no"
     command: [psql, --host=postgres, "--username=${DB__POSTGRES__USER:-}", --dbname=postgres, --set=ON_ERROR_STOP=1, "--set=databases=${DB__POSTGRES__DATABASE:-goldenguide}", --file=/bootstrap.sql]
     # The postgres image declares VOLUME for its data dir; this client-only job never uses it.
@@ -334,7 +337,7 @@ services:
   redis:
     <<: *container-limits
     image: redis:7-alpine
-    profiles: [state_store, all, all-dev]
+    profiles: [state_store, services, all, all-dev]
     restart: unless-stopped
     # Redis stores critical auth state as well as caches. Persist acknowledged state across restarts.
     command: [sh, -ec, 'exec redis-server --appendonly yes --appendfsync everysec --requirepass "$${REDIS_PASSWORD:?Set CACHE__REDIS__PASSWORD}"']

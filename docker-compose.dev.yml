@@ -9,9 +9,9 @@
 #   - The embedding services run their runtime images with source mounted over them (see below).
 # Profiles, limits, ports, and networks are inherited from docker-compose.yml.
 #
-# Splitting services across machines in development works the same way: add `--profile tailnet`
-# on each machine (see the tailscale service in docker-compose.yml), e.g. an embedding-only laptop:
-#   docker compose --profile tailnet --profile embedding-gpu up -d --remove-orphans
+# Splitting services across machines in development works the same way: add tailnet to each
+# machine's COMPOSE_PROFILES (see the tailscale service in docker-compose.yml), e.g. an embedding-only laptop:
+#   COMPOSE_PROFILES=embedding-gpu,log-shipper,tailnet
 
 # backend and provision share one image and one volume holding both the uv cache and the venv
 # (paths set in the Dockerfile `development` stage). Same volume = same filesystem, so uv hardlinks

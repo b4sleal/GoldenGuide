@@ -71,8 +71,9 @@ Profiles decide **which** services run; the override files decide **how**.
 | `auth` | Development Keycloak |
 | `observability` | Loki, Alloy, Grafana, Jaeger, OpenTelemetry Collector |
 | `log-shipper` | Alloy only, for machines that send logs to another machine's Loki |
-| `tailnet` | Tailscale node for private networking between machines |
+| `tailnet` | Tailscale device (`<MACHINE_NAME>-docker`) forwarding this machine's services to other machines; opt-in, not in `all`/`all-dev` |
 | `tunnel` | Cloudflare Tunnel (publishes the frontend at the public domain) |
+| `services` | The shared services: PostgreSQL (+ `db-bootstrap`), Qdrant, MinIO, Redis, Keycloak. For a machine that hosts them for another machine's backend |
 | `all` | Everything except the embedding services, including the tunnel |
 | `all-dev` | Everything except the embedding services, the tunnel and Keycloak (add `auth` to `COMPOSE_PROFILES` to test sign-in), plus the IDE `workspace` |
 
@@ -135,11 +136,33 @@ docker compose --profile backend up -d --build       # API machine
   backend: `docker compose run --rm provision`.
 - Set `BACKEND_ORIGIN` on the frontend host to the backend origin (scheme and port). Docker service
   names resolve only within one host's Compose networks; Compose doesn't create a cross-host network.
-- **Tailscale** (`--profile tailnet` on each machine, with `TS_AUTHKEY` and `MACHINE_NAME`) puts the
-  machines on one private network without exposing ports to the internet. Publish shared services
-  on that machine's Tailscale IP via the relevant `*_BIND_ADDRESS`.
-- Published ports bind to loopback by default. Otherwise set the bind address to a private
-  interface and allow only the client hosts through the firewall/security group.
+- Published ports bind to loopback by default, so a machine's own services stay at `localhost` and
+  nothing is exposed to its network. Reach other machines over Tailscale (below), or set a bind
+  address to a private interface and allow only the client hosts through the firewall.
+
+### Over Tailscale
+
+Add `tailnet` to `COMPOSE_PROFILES` on each machine and set `MACHINE_NAME` and `TS_AUTHKEY` (a
+tagged key). Single-machine development doesn't need any of this.
+
+- **Incoming:** the `tailscale` container is its own tailnet device, `<MACHINE_NAME>-docker`. It
+  forwards the ports in [`deploy/tailscale/serve.json`](../deploy/tailscale/serve.json) to services
+  by name, so only devices on your tailnet can reach them, e.g. `pc-docker.<tailnet>.ts.net:6333`.
+  Nothing extra is published on the host, and a forwarded service that isn't running on that
+  machine refuses the connection. Docker Desktop and Linux work the same way.
+- **Clients** use the other machine's name, never an IP: `DB__POSTGRES__HOST=pc-docker.<tailnet>.ts.net`,
+  `LOKI_PUSH_URL=http://laptop-docker.<tailnet>.ts.net:3100/loki/api/v1/push`, and so on. Find the
+  tailnet suffix with `tailscale status --json` (`MagicDNSSuffix`) or in the admin console.
+- **Outgoing:** a machine whose containers call another machine (the backend; Alloy and traces
+  sent to the observability machine) currently needs the Tailscale app on the host. Containers reach
+  tailnet names through it. Machines that only serve, such as a database or embedding machine, don't.
+- **Planned: Docker-only outgoing.** A gateway container (e.g. HAProxy sharing the `tailscale`
+  container's network, resolving names through Tailscale's DNS at `100.100.100.100`) would let callers
+  use `tailscale:5432` instead of a host app, so Docker would be the only install on every machine.
+  It needs kernel-mode Tailscale (`NET_ADMIN`, `/dev/net/tun`) and ports that don't collide with
+  the incoming forwards.
+- Every forwarded port is open to the whole tailnet. Use tagged keys and Tailscale access rules
+  if the tailnet holds anything besides your own machines.
 - PostgreSQL and Redis connections are not TLS-encrypted today: keep them on a trusted private
   network or VPN. MinIO and Qdrant support TLS through their `SECURE`/`HTTPS` flags (the server or a
   reverse proxy must also serve TLS).

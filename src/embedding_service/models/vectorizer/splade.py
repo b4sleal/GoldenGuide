@@ -1,15 +1,21 @@
+"""FastEmbed adapter for SPLADE sparse lexical-semantic vectors."""
+
 import asyncio
 
 import structlog
 from fastembed import SparseTextEmbedding
 
-from goldenguide_common.contracts.vectors import SparseVector
 from goldenguide_common.contracts.embedding_models import SpladeSparseVectorizerSettings
+from goldenguide_common.contracts.vectors import SparseVector
 
 logger = structlog.get_logger()
 
 class SpladeSparseVectorizer:
+    """Generate sparse query and document vectors for hybrid retrieval."""
+
     def __init__(self, settings=SpladeSparseVectorizerSettings):
+        """Load SPLADE with the configured model and document batch size."""
+
         self.model_name = settings.model_name
         self.batch_size = settings.batch_size
         providers = ["CUDAExecutionProvider"]
@@ -22,6 +28,8 @@ class SpladeSparseVectorizer:
         )
 
     async def vectorize_query(self, text: str):
+        """Vectorize one query and return its sparse indices and values."""
+
         embedding = await asyncio.to_thread(
             lambda: next(self.model.embed([text], batch_size=1))
         )
@@ -31,6 +39,8 @@ class SpladeSparseVectorizer:
         )
 
     async def vectorize_documents(self, texts: list[str]):
+        """Vectorize documents in batches while preserving input order."""
+
         embeddings = await asyncio.to_thread(
             lambda: list(
                 self.model.embed(texts, batch_size=self.batch_size)

@@ -1,0 +1,1 @@
+"""HTTP authentication and transport helpers for the local embedding service."""

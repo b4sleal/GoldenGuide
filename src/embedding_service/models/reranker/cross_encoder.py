@@ -13,6 +13,8 @@ class CrossEncoderReranker:
     """Scores (query, passage) pairs with a sentence-transformers cross-encoder, entirely on `device`."""
 
     def __init__(self, settings: CrossEncoderRerankerSettings):
+        """Load the configured cross-encoder with its length and batch limits."""
+
         logger.info("loading_cross_encoder_model", model_name=settings.model_name, device=settings.device)
         self.batch_size = settings.batch_size
         self.model = CrossEncoder(
@@ -23,6 +25,8 @@ class CrossEncoderReranker:
         )
 
     async def rerank(self, query: str, documents: list[str]) -> list[float]:
+        """Score documents for a query in input order without blocking the event loop."""
+
         # Raw logits, not sigmoid probabilities: the sigmoid squashes strong candidates together near 1.0,
         # while logits keep the gaps that decide whether a weaker page is still relevant.
         scores = await asyncio.to_thread(

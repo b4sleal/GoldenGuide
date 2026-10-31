@@ -1,18 +1,18 @@
 """Local embedding service: dense embeddings and sparse vectors on CPU or GPU, behind an API key."""
+import onnxruntime as ort
 import structlog
 from fastapi import Depends, FastAPI
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
-from goldenguide_common.config.loader import ConfigLoader
-from goldenguide_common.config.env_reader import EnvSecretReader
-from goldenguide_common.logging.bootstrap import configure_observability
-from embedding_service.api.auth import build_api_key_verifier
 import goldenguide_common.contracts.embedding_api as Schemas
+from embedding_service.api.auth import build_api_key_verifier
 from embedding_service.core.registry import build_model_registry
 from embedding_service.models.embedding.service import LocalEmbeddingService
 from embedding_service.models.reranker.service import LocalRerankerService
 from embedding_service.models.vectorizer.service import LocalSparseVectorizerService
-import onnxruntime as ort
+from goldenguide_common.config.env_reader import EnvSecretReader
+from goldenguide_common.config.loader import ConfigLoader
+from goldenguide_common.logging.bootstrap import configure_observability
 
 # Step 1: logging and tracing before anything else, so model loading is logged in the
 # standard format. The service name keeps these logs/spans separate from the API's.
@@ -68,6 +68,8 @@ logger.info("embedding_service.ready", runtime=runtime, models=sorted([*embeddin
 
 @app.get("/health")
 async def health():
+    """Report service readiness and the model keys loaded in this runtime."""
+
     return {
         "status": "ok",
         "service": "embedding",
@@ -77,6 +79,8 @@ async def health():
 
 @app.post("/embed/query", response_model=Schemas.EmbedResponse, dependencies=[Depends(verify_api_key)])
 async def embed_query(request: Schemas.EmbedQueryRequest):
+    """Generate one dense or multi-vector representation for a query."""
+
     vector = await embedding_service.embed_query(request.model_key, request.text)
     logger.info("embedding.query_embedded", model=request.model_key, texts=1)
     return Schemas.EmbedResponse(vectors=[vector])
@@ -84,6 +88,8 @@ async def embed_query(request: Schemas.EmbedQueryRequest):
 
 @app.post("/embed/documents", response_model=Schemas.EmbedResponse, dependencies=[Depends(verify_api_key)])
 async def embed_documents(request: Schemas.EmbedDocumentsRequest):
+    """Generate dense or multi-vector representations for documents."""
+
     vectors = await embedding_service.embed_documents(request.model_key, request.texts)
     logger.info("embedding.documents_embedded", model=request.model_key, texts=len(request.texts))
     return Schemas.EmbedResponse(vectors=vectors)
@@ -91,6 +97,8 @@ async def embed_documents(request: Schemas.EmbedDocumentsRequest):
 
 @app.post("/sparse/query", response_model=Schemas.SparseQueryResponse, dependencies=[Depends(verify_api_key)])
 async def sparse_query(request: Schemas.SparseQueryRequest):
+    """Generate one sparse vector for a query."""
+
     result = await vectorizer_service.vectorize_query(model_key=request.model_key, text=request.text)
     logger.info("embedding.query_vectorized", model=request.model_key, texts=1)
     return Schemas.SparseQueryResponse(vector=result)
@@ -98,6 +106,8 @@ async def sparse_query(request: Schemas.SparseQueryRequest):
 
 @app.post("/sparse/documents", response_model=Schemas.SparseDocumentsResponse, dependencies=[Depends(verify_api_key)])
 async def sparse_documents(request: Schemas.SparseDocumentsRequest):
+    """Generate sparse vectors for documents in input order."""
+
     result = await vectorizer_service.vectorize_documents(model_key=request.model_key, texts=request.texts)
     logger.info("embedding.documents_vectorized", model=request.model_key, texts=len(request.texts))
     return Schemas.SparseDocumentsResponse(vectors=result)
@@ -105,6 +115,8 @@ async def sparse_documents(request: Schemas.SparseDocumentsRequest):
 
 @app.post("/rerank", response_model=Schemas.RerankResponse, dependencies=[Depends(verify_api_key)])
 async def rerank(request: Schemas.RerankRequest):
+    """Score each document for the supplied query in input order."""
+
     scores = await reranker_service.rerank(request.model_key, request.query, request.documents)
     logger.info("embedding.documents_reranked", model=request.model_key, texts=len(request.documents))
     return Schemas.RerankResponse(scores=scores)

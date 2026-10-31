@@ -1,0 +1,1 @@
+"""Composition and model-registry helpers for the local embedding service."""

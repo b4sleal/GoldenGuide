@@ -1,0 +1,1 @@
+"""Dense and multi-vector embedding model adapters."""

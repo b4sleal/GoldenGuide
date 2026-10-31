@@ -1,0 +1,1 @@
+"""Local CPU/GPU service for dense embeddings, sparse vectors, and reranking."""

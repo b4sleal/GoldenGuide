@@ -57,3 +57,7 @@ record their progress, batches and audits in PostgreSQL (`GET /api/v1/admin/jobs
 Run the full `observability` profile on one machine. Every other machine runs only `log-shipper`
 (Alloy) with `LOKI_PUSH_URL` pointing at that machine and sends traces there through
 `OTEL_EXPORTER_OTLP_ENDPOINT`. `MACHINE_NAME` labels each log line with its source host.
+Over Tailscale the observability machine's `tailscale` container forwards Loki (3100) and the
+collector (4317/4318), so the others use its name, e.g.
+`LOKI_PUSH_URL=http://laptop-docker.<tailnet>.ts.net:3100/loki/api/v1/push`
+([docker](docker.md#over-tailscale)).

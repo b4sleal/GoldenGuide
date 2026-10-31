@@ -1,0 +1,1 @@
+"""Provider-backed model adapters used by the local embedding service."""
