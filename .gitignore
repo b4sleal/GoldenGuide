@@ -16,7 +16,6 @@ htmlcov/
 /.venv/
 /.vscode/
 /.worktrees/
-/.devcontainer/
 /.codex/
 /.claude/
 /.multiagents/

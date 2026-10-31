@@ -1,0 +1,18 @@
+/* Dev container, optional
+ * I prefer direct interpreter access
+ */
+{
+  "name": "GoldenGuide Python 3.14",
+  "dockerComposeFile": ["../docker-compose.yml", "../docker-compose.dev.yml"],
+  "service": "workspace",
+  "runServices": ["workspace"],
+  "workspaceFolder": "/app",
+  "remoteUser": "app",
+  "shutdownAction": "stopCompose",
+  "postCreateCommand": "uv sync --locked --no-default-groups --group dev-backend",
+  "customizations": {
+    "vscode": {
+      "settings": {"python.defaultInterpreterPath": "/home/app/.cache/venv/bin/python"}
+    }
+  }
+}
