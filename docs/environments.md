@@ -84,9 +84,9 @@ Compose files as production, with its own data stores, credentials, OIDC client 
   `docker compose --env-file .env.staging config`.
 - PostgreSQL stores its user and password in its data directory on first start. If you copy data between
   environments, the target's `DB__POSTGRES__USER` and `DB__POSTGRES__PASSWORD` must match the copied database.
-- To drop the `-f` and `--profile` flags, set `COMPOSE_PATH_SEPARATOR=;` (`:` on Linux),
-  `COMPOSE_FILE=docker-compose.yml;docker-compose.prod.yml` and `COMPOSE_PROFILES=all,embedding-gpu`
-  in the environment's file. A command-line `-f` overrides `COMPOSE_FILE`.
+- Each environment's file sets `COMPOSE_FILE` and `COMPOSE_PROFILES` (with `COMPOSE_PATH_SEPARATOR=,`
+  so the same value works on Windows and Linux), so commands need no `-f` or `--profile` flags. A
+  command-line `-f` overrides `COMPOSE_FILE`, and any `--profile` replaces `COMPOSE_PROFILES`.
 - Staging is configured like production (HTTPS origin, OIDC, no `LOCAL_ADMIN`), but the backend's
   startup checks (HTTPS `SITE_ORIGIN`, no `LOCAL_ADMIN`, required trace exporter) currently apply only
   to `APP_ENV=production`. Staging does not enforce them yet.
@@ -147,9 +147,9 @@ a hardened setup (production mode, a PostgreSQL database for Keycloak, backups) 
 ## Deploying production
 
 ```sh
-docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml --profile all --profile embedding-gpu up -d --build
+docker compose --env-file .env.prod up -d --build --remove-orphans
 # Rebuild and restart only the API after a code change (provision runs first and applies any new migration)
-docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml --profile all --profile embedding-gpu up -d --build backend
+docker compose --env-file .env.prod up -d --build backend
 ```
 
 Without `--env-file .env.prod`, Compose reads `.env` (development) and stops on the first missing production

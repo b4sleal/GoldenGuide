@@ -58,10 +58,11 @@ The file applies to every WSL distribution, not just GoldenGuide, so adjust it t
 ## 2. Start the stack
 
 ```sh
-docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile all-dev --profile embedding-gpu up -d --build
+docker compose up -d --build --remove-orphans
 ```
 
-`all-dev` starts everything except the public tunnel, Keycloak and the embedding service; the second profile
+`.env` tells Compose which files and profiles to use (`COMPOSE_FILE`, `COMPOSE_PROFILES`; defaults
+`all-dev,embedding-gpu`). `all-dev` starts everything except the public tunnel, Keycloak and the embedding service; the second profile
 picks the embedding service. Without an NVIDIA GPU, see [CPU-only machines](#cpu-only-machines).
 The first start builds images and downloads dependencies and models, which takes a while. Later
 starts reuse them.
@@ -73,7 +74,7 @@ starts reuse them.
 | http://localhost:8080/docs | Interactive API docs (admins) |
 | http://localhost:3000 | Grafana: logs and traces |
 | http://localhost:16686 | Jaeger: traces |
-| http://keycloak.localhost:8081 | Keycloak: development identity provider (only with `--profile auth`) |
+| http://keycloak.localhost:8081 | Keycloak: development identity provider (only with the `auth` profile) |
 | http://localhost:9001 | MinIO console |
 | http://localhost:6333/dashboard | Qdrant dashboard |
 
@@ -93,8 +94,8 @@ machine are treated as admin, so no sign-in is needed:
 Local admin never applies to requests through the public tunnel, and the backend refuses to start
 with it in production ([security](security.md#local-admin-without-sign-in)).
 
-**To test real sign-in** instead, add `--profile auth` to the start command, set `AUTH_MODE=oidc`, recreate the backend
-(`docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d backend`) and sign in at
+**To test real sign-in** instead, set `AUTH_MODE=oidc`, add `auth` to `COMPOSE_PROFILES` in `.env`, run
+`docker compose up -d --remove-orphans` (the backend waits for Keycloak to be ready) and sign in at
 http://localhost:8080/api/v1/auth/login as the development realm's user (`KC_TEST_ADMIN_USERNAME` /
 `KC_TEST_ADMIN_PASSWORD` in `.env`).
 
@@ -109,10 +110,11 @@ Point the backend at the CPU service in `.env`, then pick the CPU profile:
 LOCAL_EMBEDDING_SERVICE__HOST=local-embedding-cpu
 LOCAL_EMBEDDING_SERVICE__PORT=8002
 EMBEDDING_RUNTIME=cpu
+COMPOSE_PROFILES=all-dev,embedding-cpu
 ```
 
 ```sh
-docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile all-dev --profile embedding-cpu up -d --build
+docker compose up -d --build --remove-orphans
 ```
 
 The CPU service loads only the dense MiniLM embedding model and a MiniLM cross-encoder. ColBERT and SPLADE are
@@ -143,9 +145,9 @@ the IDE at the interpreter inside the `workspace` container, which uses the same
 `workspace` is part of the `all-dev` profile, so it starts and stops with the dev stack. To run it alone:
 
 ```sh
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d workspace
+docker compose up -d workspace
 # One time, or after uv.lock changes. Skip if the dev stack has already started once.
-docker compose -f docker-compose.yml -f docker-compose.dev.yml exec workspace uv sync --locked --no-default-groups --group dev-backend
+docker compose exec workspace uv sync --locked --no-default-groups --group dev-backend
 ```
 
 **IntelliJ IDEA Ultimate / PyCharm Professional** (stays in your normal window, so Git works as usual):
@@ -164,7 +166,7 @@ The IDE interpreter configuration is machine-level, so each developer sets it up
 ## Stopping
 
 ```sh
-docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile "*" stop
+docker compose --profile "*" stop   # every profile, including ones started by hand
 ```
 
 Never use `down -v` unless you intend to delete the databases, vectors and object storage. Disk

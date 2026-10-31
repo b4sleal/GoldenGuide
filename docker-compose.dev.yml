@@ -1,5 +1,5 @@
 # Development overrides, layered on docker-compose.yml:
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile all-dev --profile embedding-gpu up -d --build
+#   docker compose up -d --build --remove-orphans   (.env sets COMPOSE_FILE/COMPOSE_PROFILES)
 #
 # What changes compared with the runtime stack:
 #   - backend and provision use the Dockerfile `development` stage (toolchain + uv) instead of `runtime`.
@@ -11,7 +11,7 @@
 #
 # Splitting services across machines in development works the same way: add `--profile tailnet`
 # on each machine (see the tailscale service in docker-compose.yml), e.g. an embedding-only laptop:
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile tailnet --profile embedding-gpu up -d
+#   docker compose --profile tailnet --profile embedding-gpu up -d --remove-orphans
 
 # backend and provision share one image and one volume holding both the uv cache and the venv
 # (paths set in the Dockerfile `development` stage). Same volume = same filesystem, so uv hardlinks

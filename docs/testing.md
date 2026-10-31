@@ -35,7 +35,7 @@ group), and `docker compose run` starts a throwaway container, so no local Pytho
 and a running stack is left alone.
 
 ```sh
-DC="docker compose -f docker-compose.yml -f docker-compose.dev.yml"
+DC="docker compose"   # files come from COMPOSE_FILE in .env
 
 # Unit tests
 $DC run --rm --no-deps backend start-python-service.sh dev-backend pytest tests/backend/unit -q

@@ -1,7 +1,8 @@
 # GoldenGuide runtime stack (built images, no source mounts). Other files layer on top of this one:
-#   Development: docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile all-dev --profile embedding-gpu up -d --build
-#   Production:  docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile all --profile embedding-gpu up -d --build
-#   Staging:     same as production with --env-file .env.staging (see .env.staging.example)
+#   Development: docker compose up -d --build --remove-orphans
+#   Production:  docker compose --env-file .env.prod up -d --build --remove-orphans
+#   Staging:     docker compose --env-file .env.staging up -d --build --remove-orphans
+# Each env file selects the files and profiles (COMPOSE_FILE, COMPOSE_PROFILES); see .env.*.example.
 # all/all-dev never include an embedding service: add embedding-gpu or embedding-cpu (or neither).
 #
 # Profiles group services so each part can run on its own host. Point each host's .env at the
@@ -67,7 +68,7 @@ services:
     mem_limit: ${AUTH_MEMORY_LIMIT:-1g}
     memswap_limit: ${AUTH_MEMORY_LIMIT:-1g}
     image: quay.io/keycloak/keycloak:26.8.0
-    # Not in all-dev: development runs with sign-in off (AUTH_MODE=disabled, LOCAL_ADMIN=true). Add --profile auth
+    # Not in all-dev: development runs with sign-in off (AUTH_MODE=disabled, LOCAL_ADMIN=true). Add auth to COMPOSE_PROFILES
     # to test the real sign-in flow locally.
     profiles: [auth, all]
     restart: unless-stopped

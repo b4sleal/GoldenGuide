@@ -89,10 +89,10 @@ full picture, including jobs, observability and the backend layers, is in
 ```sh
 git clone https://github.com/b4sleal/GoldenGuide.git && cd GoldenGuide
 cp .env.dev.example .env                  # working local defaults; add MODEL_PROVIDER__GEMINI__API_KEY
-docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile all-dev --profile embedding-gpu up -d --build
+docker compose up -d --build --remove-orphans   # files and profiles come from .env
 ```
 
-Open http://localhost:8080. Without an NVIDIA GPU, use `--profile embedding-cpu` instead (with limits, see
+Open http://localhost:8080. Without an NVIDIA GPU, set `COMPOSE_PROFILES=all-dev,embedding-cpu` in `.env` (with limits, see
 [getting started](docs/getting-started.md#cpu-only-machines)). Loading data and every service URL are in
 [getting started](docs/getting-started.md). Staging and production use their own env files and Cloudflare
 tunnels ([environments](docs/environments.md));

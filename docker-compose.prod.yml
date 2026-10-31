@@ -1,5 +1,5 @@
 # Production overrides, layered on docker-compose.yml:
-#   docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml --profile all --profile embedding-gpu up -d --build
+#   docker compose --env-file .env.prod up -d --build --remove-orphans   (.env.prod sets COMPOSE_FILE/COMPOSE_PROFILES)
 #
 # Removes the development credential fallbacks from docker-compose.yml. ${VAR:?message} makes Compose
 # refuse to start when a secret is missing, instead of starting with admin/admin, MinIO's default

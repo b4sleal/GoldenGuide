@@ -126,7 +126,7 @@ defaults in `docker-compose.yml` or the code. The main groups:
 | Models | `MODEL_PROVIDER__GEMINI__API_KEY`, `MODEL_PROVIDER__OPENAI__API_KEY`, `LOCAL_EMBEDDING_SERVICE__*`, `EMBEDDING_RUNTIME` |
 | Auth | `OIDC_*`, `KC_TEST_ADMIN_*` (development realm user), `KC_ADMIN_*` (first admin of the hosted realm), `KC_BOOTSTRAP_ADMIN_*` (Keycloak console), `KC_HOSTNAME`, `SERVICE_CLIENT__<NAME>__KEY_HASH` |
 | Networking | `BACKEND_ORIGIN`, `*_PORT`, `*_BIND_ADDRESS`, `TRUSTED_PROXY_CIDRS`, `APP_NETWORK_SUBNET`, `MACHINE_NAME`, `TS_AUTHKEY`, `TUNNEL_TOKEN` (one per environment) |
-| Compose | `ENV_FILE` and `COMPOSE_PROJECT_NAME` (set by the staging and production files), optional `COMPOSE_FILE`, `COMPOSE_PROFILES`, `COMPOSE_PATH_SEPARATOR` |
+| Compose | `ENV_FILE` and `COMPOSE_PROJECT_NAME` (set by the staging and production files); `COMPOSE_FILE`, `COMPOSE_PROFILES`, `COMPOSE_PATH_SEPARATOR` (set by every environment file) |
 | Observability | `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOKI_PUSH_URL`, `CONTAINER_LOG_FORMAT`, `GRAFANA_ADMIN_*` |
 | Limits | `*_CPUS`, `*_MEMORY_LIMIT`, `EMBEDDING_THREADS`, `UV_CONCURRENT_*` |
 | Tests | `GOLDENGUIDE_TEST_DATABASE_URL`, `REDIS_TEST_URL`, `QDRANT_TEST_*`, `GOLDENGUIDE_REQUIRE_TEST_SERVICES` |

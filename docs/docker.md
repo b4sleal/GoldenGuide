@@ -26,16 +26,33 @@ Development, staging and production, env files, hostnames, tunnels and Keycloak 
 | `docker-compose.dev.yml` | Development overrides: source mounts, auto-reload, a shared dev venv, the `goldenguide_test` database |
 | `docker-compose.prod.yml` | Production overrides: every credential required (`${VAR:?}`), no development fallbacks |
 
+Each environment file chooses its Compose files and default profiles (`COMPOSE_FILE`,
+`COMPOSE_PROFILES`), so the commands stay short. `.env` is development; staging and production pass
+their own file with `--env-file`:
+
 ```sh
 # Development
-docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile all-dev --profile embedding-gpu up -d --build
+docker compose up -d --build --remove-orphans
 # Production
-docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml --profile all --profile embedding-gpu up -d --build
+docker compose --env-file .env.prod up -d --build --remove-orphans
 # Staging: production overrides with staging's own environment file
-docker compose --env-file .env.staging -f docker-compose.yml -f docker-compose.prod.yml --profile all --profile embedding-gpu up -d --build
+docker compose --env-file .env.staging up -d --build --remove-orphans
 # Validate without starting anything
-docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile all-dev config --quiet
+docker compose config --quiet
+# Stop, logs, one service
+docker compose down
+docker compose logs -f backend
+docker compose up -d --build backend
 ```
+
+Any `--profile` flag replaces `COMPOSE_PROFILES` instead of adding to it, so list every profile you
+want (`--profile all-dev --profile auth --profile embedding-gpu`) or change the file.
+`--remove-orphans` removes containers of this project whose service no longer exists, such as the
+`*-run-<id>` containers an IDE's `docker compose run` leaves behind.
+
+Each rebuild moves an image's tag to the new build and leaves the old one as an untagged `<none>`
+image. After `--build`, remove them with `docker image prune -f`: it deletes only untagged images no
+container uses, never tagged images, volumes or the build cache. Optional, it only frees disk.
 
 ## Profiles
 
@@ -57,7 +74,7 @@ Profiles decide **which** services run; the override files decide **how**.
 | `tailnet` | Tailscale node for private networking between machines |
 | `tunnel` | Cloudflare Tunnel (publishes the frontend at the public domain) |
 | `all` | Everything except the embedding services, including the tunnel |
-| `all-dev` | Everything except the embedding services, the tunnel and Keycloak (add `--profile auth` to test sign-in) |
+| `all-dev` | Everything except the embedding services, the tunnel and Keycloak (add `auth` to `COMPOSE_PROFILES` to test sign-in), plus the IDE `workspace` |
 
 Neither aggregate includes an embedding service: add `embedding-gpu` **or** `embedding-cpu`, or
 neither when another machine runs it. `all-dev` selects services, it does not make them development
@@ -72,7 +89,7 @@ One `Dockerfile` builds every Python image; the `DEPENDENCY_GROUP` build argumen
 | --- | --- | --- |
 | `python` | Python 3.14-slim, non-root `app` user (uid 10001), model cache paths | Base of everything |
 | `toolchain` | + compilers, `libpq`, uv 0.10.11 (the version that wrote `uv.lock`) | Building |
-| `development` | toolchain as `app`; dependencies sync at container start | Dev `backend`, `provision` |
+| `development` | toolchain as `app`; dependencies sync at container start | Dev `backend`, `provision`, `workspace` |
 | `builder` | Installs one dependency group and the project into `/venv` (`uv sync --locked`) | Building runtime images |
 | `runtime` | Python + the finished `/venv` + `configs/`; no compilers, no uv | `goldenguide-backend`, `goldenguide-embedding-gpu`, `goldenguide-embedding-cpu` |
 
@@ -101,7 +118,9 @@ interpreter for type hints and test runs, so the venv and uv cache exist once an
 
 ## Separate machines
 
-Every profile can run on its own host. Point each host's `.env` at the others' endpoints:
+Every profile can run on its own host. Point each host's `.env` at the others' endpoints. The
+`--profile` flags below replace that host's `COMPOSE_PROFILES`; setting `COMPOSE_PROFILES` in the
+host's `.env` instead (e.g. `database,vector-store,embedding-gpu,tailnet`) keeps the bare `up` command:
 
 ```sh
 docker compose --profile vector-store up -d          # vector machine
@@ -153,8 +172,8 @@ Not covered by container limits:
 
   ```sh
   docker buildx create --name goldenguide-limited --driver docker-container --driver-opt memory=4g,memory-swap=4g,cpu-quota=200000,cpu-period=100000,default-load=true --buildkitd-config docker/buildkitd.toml
-  docker compose -f docker-compose.yml -f docker-compose.dev.yml --parallel 1 --profile all-dev --profile embedding-gpu build --builder goldenguide-limited
-  docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile all-dev --profile embedding-gpu up -d --no-build
+  docker compose --parallel 1 build --builder goldenguide-limited
+  docker compose up -d --no-build --remove-orphans
   ```
 
 - **GPU memory.** GPU reservation grants access to the device; it doesn't cap VRAM.
@@ -207,7 +226,7 @@ Never remove `pg_data`, `qdrant_data`, `minio_data`, `redis_data`, `keycloak_dat
 they hold data, not caches. The dev venv volume is always safe to delete; the next start rebuilds it:
 
 ```sh
-docker compose -f docker-compose.yml -f docker-compose.dev.yml --profile "*" rm -sf backend provision workspace
+docker compose rm -sf backend provision workspace
 docker volume rm goldenguide_python_dev_env
 ```
 
