@@ -6,7 +6,7 @@ What to do day to day: check that it is healthy, deploy a change, take and resto
 add an admin, and fix the problems that have actually come up. How the environments differ is in
 [environments](environments.md); how to run a single environment is in [docker](docker.md).
 
-- [Command shorthand](#command-shorthand)
+- [Commands](#commands)
 - [Everyday checks](#everyday-checks)
 - [Deploy a change](#deploy-a-change)
 - [Roll back](#roll-back)
