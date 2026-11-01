@@ -1,0 +1,7 @@
+catalog:
+  chat:
+    conversation_history:
+      # Earlier question/answer pairs the answer model sees, so follow-up questions make sense.
+      max_turns: 3
+      # Each earlier message is cut to this length: history is for meaning, not for re-reading answers.
+      max_chars_per_message: 1500

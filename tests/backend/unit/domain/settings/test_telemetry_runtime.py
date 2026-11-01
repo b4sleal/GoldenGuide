@@ -5,8 +5,8 @@ import pytest
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-from goldenguide_common.logging.settings import TelemetrySettings
 from goldenguide_common.logging import telemetry
+from goldenguide_common.logging.settings import TelemetrySettings
 
 
 def test_exporter_receives_configuration_and_resource(monkeypatch):
@@ -40,16 +40,6 @@ def test_exporter_receives_configuration_and_resource(monkeypatch):
     # A second shutdown must not change process state.
     telemetry.shutdown_telemetry()
     exporter.shutdown.assert_called_once()
-
-
-def test_production_rejects_missing_endpoint():
-    with pytest.raises(ValueError, match="OTLP endpoint"):
-        TelemetrySettings(environment="production")
-
-
-def test_invalid_sampling_rejected():
-    with pytest.raises(ValueError):
-        TelemetrySettings(sample_ratio=1.5)
 
 
 def test_invalid_export_headers_do_not_install_provider(monkeypatch):

@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from joserfc.errors import JoseError
 
+from backend.api.cookies import cookie_options
 from backend.api.auth import require_same_origin
 from backend.domain.entities.auth.storage import AuthSession, OAuthTransaction
 
@@ -30,16 +31,6 @@ def _enabled(request: Request) -> None:
     """404 when sign-in is turned off, so the endpoints behave as if they do not exist."""
     if request.app.state.auth_mode != "oidc":
         raise HTTPException(404, "Sign-in is not enabled")
-
-
-def _cookie_options(request: Request) -> dict:
-    """Cookie flags: not readable by JS, HTTPS-only when the site is HTTPS, sent on top-level navigation."""
-    return {
-        "httponly": True,
-        "secure": request.app.state.site_origin.startswith("https://"),
-        "samesite": "lax",
-        "path": "/",
-    }
 
 
 @router.get("/login")
@@ -62,7 +53,7 @@ async def login(request: Request) -> RedirectResponse:
     # Step 3: send the browser to the identity provider, remembering state in a short-lived cookie.
     url = request.app.state.oidc.authorization_url(state=state, verifier=verifier, nonce=nonce)
     response = RedirectResponse(url, status_code=302)
-    response.set_cookie("gg_oidc_state", state, max_age=LOGIN_TRANSACTION_SECONDS, **_cookie_options(request))
+    response.set_cookie("gg_oidc_state", state, max_age=LOGIN_TRANSACTION_SECONDS, **cookie_options(request))
     return response
 
 
@@ -122,7 +113,7 @@ async def callback(request: Request) -> RedirectResponse:
     # Step 7: back to the site with the session cookie; the one-time state cookie is no longer needed.
     response = RedirectResponse(request.app.state.site_origin + "/", status_code=303)
     response.delete_cookie("gg_oidc_state", path="/")
-    response.set_cookie("gg_session", session_id, max_age=SESSION_SECONDS, **_cookie_options(request))
+    response.set_cookie("gg_session", session_id, max_age=SESSION_SECONDS, **cookie_options(request))
     return response
 
 

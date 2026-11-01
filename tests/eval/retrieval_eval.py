@@ -3,13 +3,16 @@
     docker compose exec -w /app backend python -m tests.eval.retrieval_eval
     docker compose exec -w /app backend python -m tests.eval.retrieval_eval --show "What are the important dates"
     docker compose exec -w /app backend python -m tests.eval.retrieval_eval --ask "What are the important dates"
+    docker compose exec -w /app backend python -m tests.eval.retrieval_eval --follow-ups
 
 For every case in retrieval_cases.yml it runs the same search the chat uses (the configured retrieval
 profile), then reports where the expected page first appears among the context chunks, before and after
 the cross-encoder rerank, and how long each question took. "hit" = the page is in the first
 CONTEXT_CHUNKS chunks, the ones the answer model actually receives. --show prints those chunks (title
 and opening text) for one question. --ask runs the full chat pipeline for one question and prints the
-answer, its tables and sources, and its timings (this one calls the LLMs).
+answer, its tables and sources, and its timings (this one calls the LLMs). --follow-ups runs each
+follow_up_cases conversation through the router (router LLM only) and checks that the follow-up question
+uses the course carried from the turn before.
 
 This is an evaluation, not a unit test: it needs Postgres, Qdrant and the embedding service running,
 and its numbers move with the data. Run it before and after any retrieval change.
@@ -23,7 +26,12 @@ from pathlib import Path
 
 import yaml
 
+from backend.application.use_cases.chatbot.turn_recorder import TurnRecorder
+from backend.domain.entities.conversations import ConversationMemory
 from backend.application.services.chatbot.reranking import drop_duplicate_chunks, rerank_hits
+from backend.application.services.router.conversation_entities import entities_to_carry
+from backend.application.services.router.planning.llm.plan_validation import referenced_masks
+from backend.domain.entities.question import CourseEntity, EntityMap
 from backend.core.startup.runtime import build_container
 from goldenguide_common.logging.telemetry import shutdown_telemetry
 
@@ -119,7 +127,7 @@ async def ask(chatbot, question: str) -> int:
     started = time.perf_counter()
     first_text_ms = None
     sources: list[dict] = []
-    async for line in chatbot.ask(question):
+    async for line in chatbot.ask(question, TurnRecorder(), ConversationMemory()):
         event = json.loads(line)
         if event["type"] == "text":
             first_text_ms = first_text_ms if first_text_ms is not None else elapsed_ms(started)
@@ -138,11 +146,40 @@ async def ask(chatbot, question: str) -> int:
     return 0
 
 
-async def main(question: str | None, ask_question: str | None) -> int:
+async def follow_ups(query_router, cases) -> int:
+    """Route each conversation turn by turn, carrying entities exactly as the chat does."""
+    passed = 0
+    for case in cases:
+        carried: EntityMap = {}
+        *earlier_turns, follow_up = case["turns"]
+        for question in earlier_turns:
+            plan, current, earlier = await query_router.route(question, carried)
+            carried = entities_to_carry(current, earlier, referenced_masks(plan))
+
+        plan, _, earlier = await query_router.route(follow_up, carried)
+        used = {
+            earlier[mask].normalized
+            for request in plan.retrieval.requests if request.source == case["source"]
+            for mask in request.entities
+            if isinstance(earlier.get(mask), CourseEntity)
+        }
+        ok = case["expected_course"] in used
+        passed += ok
+        print(f"{'pass' if ok else 'FAIL'} | {' -> '.join(case['turns'])} | "
+              f"{case['source']} requests used earlier courses {sorted(used) or 'none'}")
+
+    print(f"\nfollow-ups resolved: {passed}/{len(cases)}")
+    return 0 if passed == len(cases) else 1
+
+
+async def main(question: str | None, ask_question: str | None, run_follow_ups: bool) -> int:
     container = build_container()
     try:
         if ask_question:
             return await ask(container.services.rag_chatbot(), ask_question)
+        if run_follow_ups:
+            cases = yaml.safe_load(CASES.read_text(encoding="utf-8"))["follow_up_cases"]
+            return await follow_ups(container.services.academic_retrieval_orchestrator().query_router, cases)
         resolver = container.services.rag_context_resolver()
         # The same profile the chat routes ordinary questions to.
         profile = resolver.router.route_question(question or "")
@@ -161,5 +198,6 @@ if __name__ == "__main__":
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--show", metavar="QUESTION", help="print the context chunks for one question")
     modes.add_argument("--ask", metavar="QUESTION", help="answer one question end to end and print the answer")
+    modes.add_argument("--follow-ups", action="store_true", help="check that follow-up questions use carried entities")
     args = parser.parse_args()
-    sys.exit(asyncio.run(main(args.show, args.ask)))
+    sys.exit(asyncio.run(main(args.show, args.ask, args.follow_ups)))

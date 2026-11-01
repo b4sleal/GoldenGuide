@@ -1,0 +1,245 @@
+@import "tailwindcss";
+
+/* Theme tokens (shadcn/ui naming). Laurier purple and gold as primary and accent. */
+:root {
+  --background: oklch(0.99 0.003 300);
+  --foreground: oklch(0.2 0.02 300);
+  --muted: oklch(0.955 0.008 300);
+  --muted-foreground: oklch(0.48 0.02 300);
+  --border: oklch(0.9 0.01 300);
+  --ring: oklch(0.45 0.18 300);
+  --primary: oklch(0.32 0.15 300);
+  --primary-foreground: oklch(0.98 0 0);
+  --secondary: oklch(0.94 0.02 300);
+  --secondary-foreground: oklch(0.25 0.06 300);
+  --accent: oklch(0.8 0.16 80);
+  --accent-foreground: oklch(0.25 0.05 80);
+  --destructive: oklch(0.55 0.2 27);
+  --warning: oklch(0.96 0.05 85);
+  --warning-foreground: oklch(0.4 0.09 70);
+  --sidebar: oklch(0.97 0.006 300);
+  color-scheme: light;
+}
+
+.dark {
+  --background: oklch(0.17 0.012 300);
+  --foreground: oklch(0.95 0.005 300);
+  --muted: oklch(0.24 0.015 300);
+  --muted-foreground: oklch(0.72 0.02 300);
+  --border: oklch(0.3 0.02 300);
+  --ring: oklch(0.72 0.14 300);
+  --primary: oklch(0.72 0.14 300);
+  --primary-foreground: oklch(0.16 0.02 300);
+  --secondary: oklch(0.27 0.03 300);
+  --secondary-foreground: oklch(0.92 0.01 300);
+  --accent: oklch(0.82 0.15 80);
+  --accent-foreground: oklch(0.2 0.04 80);
+  --destructive: oklch(0.65 0.2 27);
+  --warning: oklch(0.3 0.05 80);
+  --warning-foreground: oklch(0.9 0.08 85);
+  --sidebar: oklch(0.2 0.014 300);
+  color-scheme: dark;
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-sidebar: var(--sidebar);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+/* Both states use the same three tracks so CSS can interpolate without remounting the input. */
+.chat-layout {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto minmax(0, 0fr);
+  transition: grid-template-rows 550ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.chat-layout-empty {
+  grid-template-rows: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+.loading-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.loading-dots > span {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: gg-loading-dot 1.5s ease-in-out infinite;
+}
+.loading-dots > span:nth-child(2) { animation-delay: 150ms; }
+.loading-dots > span:nth-child(3) { animation-delay: 300ms; }
+@keyframes gg-loading-dot {
+  0%, 70%, 100% { opacity: 0.45; transform: translateY(0); }
+  35% { opacity: 1; transform: translateY(-3px); }
+}
+
+/* Short entrance motion; the composer uses its own slower timing above. Theme colors are immediate. */
+@utility animate-in {
+  animation: gg-enter 200ms ease-out both;
+}
+@utility fade-in {
+  --gg-enter-x: 0;
+}
+@utility slide-in-from-left {
+  --gg-enter-x: -100%;
+}
+@keyframes gg-enter {
+  from {
+    opacity: 0;
+    transform: translateX(var(--gg-enter-x, 0));
+  }
+}
+
+@keyframes gg-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@utility animate-gg-pulse {
+  animation: gg-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes gg-caret {
+  50% {
+    opacity: 0;
+  }
+}
+/* Blinking caret after the last streamed character. */
+@utility streaming-caret {
+  & > :last-child::after {
+    content: "▍";
+    margin-left: 1px;
+    animation: gg-caret 1s steps(1) infinite;
+    color: var(--primary);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* One row of source cards; native touch/keyboard scrolling remains available without a scrollbar. */
+@utility source-carousel {
+  scrollbar-width: none;
+  cursor: grab;
+  &::-webkit-scrollbar { display: none; }
+  &[data-dragging="true"] {
+    cursor: grabbing;
+    user-select: none;
+  }
+}
+
+/* Intrinsic column widths keep records readable; overflow belongs to the table, not the page.
+   pre preserves multi-meeting line breaks while overriding the answer's wrap-anywhere rule. */
+@utility table-scroll {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  max-height: min(24rem, 60vh);
+  overflow: auto;
+  @apply rounded-md border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+
+  & > table {
+    width: max-content;
+    min-width: 100%;
+    /* Separate borders remain visible when the header sticks inside the viewport. */
+    border-collapse: separate;
+    border-spacing: 0;
+    overflow-wrap: normal;
+  }
+  & th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    white-space: nowrap;
+  }
+  & td {
+    white-space: pre;
+  }
+}
+
+/* Answer Markdown: readable defaults without a typography plugin. */
+@utility answer-prose {
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  & > * + * {
+    margin-top: 0.75em;
+  }
+  & h1,
+  & h2,
+  & h3 {
+    font-weight: 600;
+    line-height: 1.3;
+    margin-top: 1.1em;
+  }
+  & h1 {
+    font-size: 1.25rem;
+  }
+  & h2 {
+    font-size: 1.125rem;
+  }
+  & ul {
+    list-style: disc;
+    padding-left: 1.4em;
+  }
+  & ol {
+    list-style: decimal;
+    padding-left: 1.4em;
+  }
+  & li + li {
+    margin-top: 0.25em;
+  }
+  & a:not([data-citation]) {
+    color: var(--primary);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  & code {
+    font-size: 0.875em;
+    background: var(--muted);
+    border-radius: 0.25rem;
+    padding: 0.1em 0.3em;
+  }
+  & blockquote {
+    border-left: 3px solid var(--border);
+    padding-left: 0.8em;
+    color: var(--muted-foreground);
+  }
+}

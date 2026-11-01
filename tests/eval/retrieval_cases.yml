@@ -49,3 +49,17 @@ cases:
   - question: can I pay my tuition in installments
     expected_urls:
       - https://students.wlu.ca/finances/tuition-and-fees/payments/payment-plan.html
+
+# Follow-up evaluation (retrieval_eval.py --follow-ups): the second question names no course of its own,
+# so the router must use the course carried from the first ([EARLIER_...] mask) in a request on `source`.
+follow_up_cases:
+  - turns:
+      - What are the prerequisites for CP264?
+      - Is it offered in winter?
+    expected_course: CP264
+    source: course_terms
+  - turns:
+      - Tell me about CP164
+      - What are its prerequisites?
+    expected_course: CP164
+    source: courses

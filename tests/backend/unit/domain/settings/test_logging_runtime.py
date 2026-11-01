@@ -1,18 +1,17 @@
-"""Behavior tests: capture actual rendered JSON, trace context and exception output."""
+"""Behavior tests: capture actual rendered JSON, trace context and exception output.
+
+@traced span tests live in tests/backend/unit/shared/test_logging.py.
+"""
 import io
 import json
 import logging
-import time
 
 import pytest
 import structlog
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from goldenguide_common.logging.settings import LoggingSettings
-from goldenguide_common.logging import trace_wrapper
 from goldenguide_common.logging.configure import configure_logging
+from goldenguide_common.logging.settings import LoggingSettings
 
 
 @pytest.fixture
@@ -99,58 +98,3 @@ def test_trace_ids_are_correlated_with_json_logs(json_logs):
     assert event["trace_id"] == f"{expected.trace_id:032x}"
     assert event["span_id"] == f"{expected.span_id:016x}"
     provider.shutdown()
-
-
-@pytest.fixture
-def recorded_spans(monkeypatch):
-    exporter = InMemorySpanExporter()
-    provider = TracerProvider()
-    provider.add_span_processor(SimpleSpanProcessor(exporter))
-    monkeypatch.setattr(trace_wrapper, "tracer", provider.get_tracer("tests"))
-    yield exporter
-    provider.shutdown()
-
-
-@pytest.mark.asyncio
-async def test_async_failure_records_exception_and_duration(recorded_spans):
-    @trace_wrapper.traced("chat.router")
-    async def fail():
-        import asyncio
-        await asyncio.sleep(0.012)
-        raise RuntimeError("router unavailable")
-
-    with pytest.raises(RuntimeError, match="router unavailable"):
-        await fail()
-    span, = recorded_spans.get_finished_spans()
-    assert span.name == "chat.router"
-    assert span.end_time - span.start_time >= 8_000_000  # ns; real awaited time.
-    assert span.status.status_code.name == "ERROR"
-    assert any(e.name == "exception" and "router unavailable" in str(e.attributes) for e in span.events)
-
-
-@pytest.mark.asyncio
-async def test_async_stream_span_lasts_until_consumed(recorded_spans):
-    @trace_wrapper.traced("chat.stream")
-    async def stream():
-        yield "first"
-        import asyncio
-        await asyncio.sleep(0.012)
-        yield "second"
-
-    generated = stream()
-    assert recorded_spans.get_finished_spans() == ()
-    assert [item async for item in generated] == ["first", "second"]
-    span, = recorded_spans.get_finished_spans()
-    assert span.end_time - span.start_time >= 8_000_000
-
-
-def test_sync_operation_records_duration(recorded_spans):
-    @trace_wrapper.traced("course.compile")
-    def compile_course():
-        time.sleep(0.01)
-        return "ok"
-
-    assert compile_course() == "ok"
-    span, = recorded_spans.get_finished_spans()
-    assert span.name == "course.compile"
-    assert span.end_time - span.start_time >= 7_000_000

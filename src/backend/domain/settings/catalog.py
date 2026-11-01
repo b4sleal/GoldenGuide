@@ -8,12 +8,8 @@ from pydantic import BaseModel, ConfigDict
 
 from backend.domain.settings import providers
 from backend.domain.settings.ai_behavior import RetrievalProfileCatalog
+from backend.domain.settings.chat import ChatSettings
 from backend.domain.settings.embedding import EmbeddingCatalog
-from goldenguide_common.contracts.embedding_models import (
-    LocalEmbeddingCatalog,
-    LocalRerankerCatalog,
-    LocalSparseVectorizerCatalog,
-)
 from backend.domain.settings.institution import InstitutionProfile
 from backend.domain.settings.llm import LLMCatalog
 from backend.domain.settings.profiles import (
@@ -25,6 +21,11 @@ from backend.domain.settings.profiles import (
 )
 from backend.domain.settings.router import RouterSettings
 from backend.domain.settings.scraping import ScrapingCatalog
+from goldenguide_common.contracts.embedding_models import (
+    LocalEmbeddingCatalog,
+    LocalRerankerCatalog,
+    LocalSparseVectorizerCatalog,
+)
 
 
 class FrozenConfig(BaseModel):
@@ -80,4 +81,5 @@ class CatalogSettings(FrozenConfig):
     text_enrichment: TextEnrichmentCatalog
     institution: InstitutionProfile
     router: RouterSettings
+    chat: ChatSettings
     scraping: ScrapingCatalog

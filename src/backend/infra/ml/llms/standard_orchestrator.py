@@ -8,6 +8,7 @@ from collections.abc import Mapping
 import structlog
 from pydantic import BaseModel
 
+from backend.domain.entities.llm import LLMRequest
 from backend.domain.ports.providers.llm import LLM
 from backend.domain.settings.profiles import LLMProfile
 
@@ -33,7 +34,7 @@ class StandardLLMOrchestrator:
 
     async def generate_stream(
             self,
-            prompt: str,
+            request: LLMRequest,
             profile: LLMProfile,
     ):
         last_error = None
@@ -41,7 +42,7 @@ class StandardLLMOrchestrator:
         for target, llm in self._targets(profile):
             started = False
             try:
-                async for chunk in llm.generate_stream(prompt):
+                async for chunk in llm.generate_stream(request):
                     started = True
                     yield chunk
 
@@ -64,42 +65,17 @@ class StandardLLMOrchestrator:
 
         raise RuntimeError("All LLM targets failed") from last_error
 
-    async def generate(
+    async def generate_structured[T: BaseModel](
             self,
-            prompt: str,
+            request: LLMRequest,
             profile: LLMProfile,
-    ):
-        last_error = None
-
-        for target, llm in self._targets(profile):
-            try:
-                return await llm.generate(prompt)
-            except Exception as e:
-                logger.warning(
-                    "llm_generate_failed",
-                    provider=target.provider,
-                    target=target.name,
-                    error_type=type(e).__name__,
-                    error=str(e),
-                )
-                last_error = e
-
-        raise RuntimeError("All LLM targets failed") from last_error
-
-    async def generate_structured[T: BaseModel = BaseModel](
-            self,
-            prompt: str,
-            profile: LLMProfile,
-            response_model: type[T] = BaseModel,
+            response_model: type[T],
     ) -> T:
         last_error = None
 
         for target, llm in self._targets(profile):
             try:
-                return await llm.generate_structured(
-                    prompt=prompt,
-                    response_model=response_model,
-                )
+                return await llm.generate_structured(request, response_model)
 
             except Exception as exc:
                 logger.warning(

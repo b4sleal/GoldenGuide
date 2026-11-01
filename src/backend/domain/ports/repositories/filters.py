@@ -1,10 +1,13 @@
 """Typed query filters for every repository (no raw SQL or ORM types cross this boundary)."""
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from backend.domain.entities.conversations import MessageStatus
 from backend.domain.entities.jobs import JobBatchStatus, JobStatus
 from backend.domain.entities.scraping import ScrapeStatus
 from backend.domain.entities.wlu.loris_registration import MeetingRoom
@@ -29,6 +32,23 @@ class JobBatchFilter(BaseModel):
     batch_no: int | None = None
     status: JobBatchStatus | None = None
     statuses: tuple[JobBatchStatus, ...] | None = None
+
+class ConversationFilter(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    id: UUID | None = None
+    owner_subject: str | None = None
+    client_id_hash: str | None = None
+    # Last activity before this time: conversations past the retention period.
+    updated_before: datetime | None = None
+
+    def is_empty(self) -> bool:
+        return all(value is None for value in self.model_dump().values())
+
+class ChatMessageFilter(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    id: int | None = None
+    conversation_id: UUID | None = None
+    statuses: tuple[MessageStatus, ...] | None = None
 
 class CourseFilter(BaseModel):
     """Pure domain DTO for filtering courses. Contains ZERO translation logic."""

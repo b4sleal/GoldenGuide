@@ -1,11 +1,13 @@
 """Answer a question: retrieve context, prompt the generation model, and stream answer events.
 
 Events are NDJSON lines (protocol: src/backend/api/streaming.py, which adds the final "ok"/"error"):
+    status    progress before the text: understanding, searching (one per source), writing
     text      answer text
     citation  inline citation markers
     table     a table built from database records, placed where the model wrote {{TABLE:n}}
     sources   the source list, always last
 """
+import asyncio
 import json
 import time
 from collections.abc import AsyncGenerator
@@ -16,12 +18,23 @@ from backend.application.use_cases.chatbot.date_scope import terms_to_cover
 from backend.application.use_cases.chatbot.evidence_tables import TableMarkerParser
 from backend.application.use_cases.chatbot.formatting import CitationStreamParser
 from backend.application.use_cases.chatbot.link_resolver import ChatbotLinkResolver
-from backend.application.use_cases.chatbot.retrieval_orchestrator import AcademicRetrievalOrchestrator, elapsed_ms
+from backend.application.use_cases.chatbot.retrieval_orchestrator import (
+    AcademicRetrievalOrchestrator,
+    elapsed_ms,
+)
+from backend.application.use_cases.chatbot.turn_recorder import TurnRecorder
 from backend.application.use_cases.settings.settings_service import SettingsService
+from backend.domain.entities.conversations import ConversationMemory
+from backend.domain.entities.llm import LLMRequest, Message, MessageRole
+from backend.domain.entities.turn_status import TurnStage, TurnStatus
 from backend.domain.entities.wlu.academic_term import AcademicTermResolver
 from backend.domain.ports.providers.llm import LLMOrchestrator
 
 logger = structlog.get_logger()
+
+
+def _status_line(status: TurnStatus) -> str:
+    return json.dumps({"type": "status", **status.model_dump(mode="json", exclude_none=True)}) + "\n"
 
 
 class RagChatbot:
@@ -37,15 +50,42 @@ class RagChatbot:
         self.settings = settings_service
         self.term_resolver = term_resolver
 
-    async def ask(self, question: str, top_k: int = 8) -> AsyncGenerator[str, None]:
+    async def ask(
+            self, question: str, recorder: TurnRecorder, memory: ConversationMemory, top_k: int = 8,
+    ) -> AsyncGenerator[str]:
+        """Stream the answer. `memory` is the conversation so far: earlier turns help the answer model with
+        follow-ups and carried entities let the router resolve "it"; evidence and citations still come only
+        from this question's retrieval."""
         # Question and answer are logged at info so conversations can be reviewed; they are student
         # input, so log retention/access must be treated accordingly (see the logging configuration).
         request_started = time.perf_counter()
         logger.info("chat_question_received", question=question)
 
-        # Step 1: retrieve everything the answer may use (records, sources, links, tables, limitations).
-        retrieval_data = await self.retrieval.resolve_context(question, top_k)
+        # Step 1: retrieve everything the answer may use (records, sources, links, tables, limitations),
+        # streaming each stage's progress while it runs so the student never watches a frozen screen.
+        yield _status_line(TurnStatus(stage=TurnStage.UNDERSTANDING))
+        retrieval = asyncio.create_task(
+            self.retrieval.resolve_context(question, recorder, memory.carried_entities, top_k)
+        )
+        next_status: asyncio.Future | None = None
+        try:
+            while not retrieval.done():
+                next_status = asyncio.ensure_future(recorder.statuses.get())
+                await asyncio.wait({retrieval, next_status}, return_when=asyncio.FIRST_COMPLETED)
+                if next_status.done():
+                    yield _status_line(next_status.result())
+                else:
+                    next_status.cancel()
+            while not recorder.statuses.empty():
+                yield _status_line(recorder.statuses.get_nowait())
+        finally:
+            # The student left mid-retrieval: stop the work instead of finishing it for nobody.
+            retrieval.cancel()
+            if next_status is not None:
+                next_status.cancel()
+        retrieval_data = retrieval.result()   # Raises the retrieval's own error, if it failed.
         retrieval_ms = elapsed_ms(request_started)
+        recorder.timings["retrieval_ms"] = retrieval_ms
 
         # Step 2: replace source URLs in the context with short placeholders the model copies back,
         # so it never retypes (or invents) long URLs; the resolver restores them in the stream.
@@ -57,7 +97,8 @@ class RagChatbot:
         # computed here so the answer model never works out terms itself (a saved prompt without these
         # placeholders still formats: unused keyword arguments are ignored).
         settings = await self.settings.get()
-        prompt = settings.generation_llm.prompt.format(
+        recorder.settings_version = settings.version
+        turn = settings.generation_llm.turn.format(
             context_text=context_text,
             question=question,
             current_date=self.term_resolver.today().isoformat(),
@@ -65,7 +106,7 @@ class RagChatbot:
         )
         logger.info(
             "rag_prompt_built",
-            prompt_length=len(prompt),
+            prompt_length=len(settings.generation_llm.system) + len(turn),
             sources=len(retrieval_data.sources),
             tables=len(retrieval_data.tables),
             settings_version=settings.version,
@@ -88,12 +129,12 @@ class RagChatbot:
             # Same boundary rule: release held-back text before the citation.
             return [*table_parser.flush(), event]
 
-        # The answer exactly as the student sees it (after link resolution), for the completion log.
-        answer_parts: list[str] = []
+        # The answer exactly as the student sees it (after link resolution), recorded as it streams.
+        answer_parts = recorder.answer_parts
 
         def line(event: dict) -> str:
-            if event["type"] == "text":
-                answer_parts.append(event["text"])
+            # Record exactly the resolved content being emitted, including appended/unplaced tables.
+            recorder.record_answer_event(event)
             return json.dumps(event) + "\n"
 
         def process(events: list[dict]) -> list[str]:
@@ -105,11 +146,17 @@ class RagChatbot:
             ]
 
         # Step 5: stream the model's answer through the chain.
+        yield _status_line(TurnStatus(stage=TurnStage.WRITING))
         generation_started = time.perf_counter()
         first_chunk_ms = None
-        async for chunk in self.llm.generate_stream(prompt=prompt, profile=retrieval_data.llm_profile):
+        request = LLMRequest(
+            system=settings.generation_llm.system,
+            messages=(*memory.earlier, Message(role=MessageRole.USER, content=turn)),
+        )
+        async for chunk in self.llm.generate_stream(request, profile=retrieval_data.llm_profile):
             if first_chunk_ms is None:
                 first_chunk_ms = elapsed_ms(generation_started)
+                recorder.timings["first_chunk_ms"] = first_chunk_ms
             for output in process(citation_parser.feed(chunk)):
                 yield output
 
@@ -131,6 +178,9 @@ class RagChatbot:
             "type": "sources",
             "sources": [source.model_dump() for source in retrieval_data.sources],
         })
+
+        recorder.timings["generation_ms"] = elapsed_ms(generation_started)
+        recorder.timings["total_ms"] = elapsed_ms(request_started)
 
         # Field names avoid "token": the log redactor masks any key containing it.
         logger.info(

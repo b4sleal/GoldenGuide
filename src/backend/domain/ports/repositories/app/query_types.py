@@ -3,6 +3,7 @@ from enum import StrEnum
 
 from pydantic import Field
 
+from backend.domain.entities.conversations import ChatMessageField, ConversationField
 from backend.domain.entities.documents import DocumentField
 from backend.domain.entities.jobs import JobBatchField, JobRunField
 from backend.domain.ports.repositories.pagination import PageParams
@@ -24,6 +25,13 @@ class JobBatchSortField(StrEnum):
     BATCH_NO = JobBatchField.BATCH_NO
     STATUS = JobBatchField.STATUS
 
+class ConversationSortField(StrEnum):
+    CREATED_AT = ConversationField.CREATED_AT
+    UPDATED_AT = ConversationField.UPDATED_AT
+
+class ChatMessageSortField(StrEnum):
+    POSITION = ChatMessageField.POSITION
+
 class DocumentPageParams(PageParams[DocumentSortField]):
     order_by: list[SortSpec[DocumentSortField]] = Field(default_factory=list)
 
@@ -32,3 +40,9 @@ class JobRunPageParams(PageParams[JobRunSortField]):
 
 class JobBatchPageParams(PageParams[JobBatchSortField]):
     order_by: list[SortSpec[JobBatchSortField]] = Field(default_factory=list)
+
+class ConversationPageParams(PageParams[ConversationSortField]):
+    order_by: list[SortSpec[ConversationSortField]] = Field(default_factory=list)
+
+class ChatMessagePageParams(PageParams[ChatMessageSortField]):
+    order_by: list[SortSpec[ChatMessageSortField]] = Field(default_factory=list)

@@ -51,7 +51,17 @@ server {
         add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
         # Static HTML no longer passes through FastAPI's security middleware. Keep its baseline
         # browser policy here; API responses retain the headers produced by that middleware.
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" always;
-        try_files $uri $uri/ =404;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" always;
+        # The app is a single page: client-side routes (/c/<id>) are answered with index.html.
+        # Never cache it, so a new deploy's hashed assets are picked up on the next load.
+        add_header Cache-Control "no-cache" always;
+        try_files $uri /index.html;
+    }
+
+    # Built assets have content hashes in their names, so they can be cached forever.
+    location /assets/ {
+        add_header X-Content-Type-Options nosniff always;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files $uri =404;
     }
 }

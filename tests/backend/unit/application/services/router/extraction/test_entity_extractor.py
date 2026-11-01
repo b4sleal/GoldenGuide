@@ -89,3 +89,26 @@ def test_masks_are_numbered_per_entity_type():
     assert [state.next_mask(EntityType.COURSE), state.next_mask(EntityType.ROOM), state.next_mask(EntityType.COURSE)] == [
         "[COURSE1]", "[ROOM1]", "[COURSE2]",
     ]
+
+
+async def test_a_pronoun_that_spells_a_subject_code_is_not_an_entity(extractor):
+    # Regression: Italian's code is IT, so "is it offered" became "is [DEPARTMENT1] offered" and a
+    # follow-up question searched Italian instead of the course it referred to.
+    masked = await extractor.extract_and_mask("Is it offered in winter?")
+
+    assert masked.entities == {}
+    assert masked.text == "Is it offered in winter?"
+
+
+async def test_a_subject_code_written_in_capitals_still_matches(extractor):
+    masked = await extractor.extract_and_mask("Which IT courses run in winter?")
+
+    [entity] = masked.entities.values()
+    assert isinstance(entity, DisciplineEntity) and entity.canonical == "Italian"
+
+
+async def test_subject_names_still_match_in_any_case(extractor):
+    masked = await extractor.extract_and_mask("which italian courses run in winter?")
+
+    [entity] = masked.entities.values()
+    assert isinstance(entity, DisciplineEntity) and entity.canonical == "Italian"

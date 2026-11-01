@@ -19,11 +19,20 @@ class FrozenAIBehavior(BaseModel):
 # -------------------------------------------------
 # Runtime defaults (still domain — affects behavior)
 # -------------------------------------------------
-class RouterLLM(FrozenAIBehavior):
-    prompt: str
+class PromptTemplate(FrozenAIBehavior):
+    """An LLM prompt: fixed instructions plus a per-question template.
 
-class GenerationLLM(FrozenAIBehavior):
-    prompt: str
+    `system` never changes between questions, so providers can cache it. `turn` holds everything that
+    does (date, context, question) and is filled with str.format.
+    """
+    system: str = Field(min_length=1)
+    turn: str = Field(min_length=1)
+
+class RouterLLM(PromptTemplate):
+    pass
+
+class GenerationLLM(PromptTemplate):
+    pass
 
 class RuntimeDefaultsCatalog(FrozenAIBehavior):
     version: int = 1

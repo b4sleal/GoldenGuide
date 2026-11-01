@@ -14,6 +14,7 @@ from backend.application.use_cases.chatbot.retrieval_limitations import (
 from backend.application.use_cases.chatbot.retrieval_orchestrator import (
     AcademicRetrievalOrchestrator,
 )
+from backend.application.use_cases.chatbot.turn_recorder import TurnRecorder
 from backend.domain.entities.retrieval import (
     Evidence,
     RetrievalOutcome,
@@ -95,8 +96,8 @@ def test_render_is_empty_without_notes():
 # ---- orchestrator: the "cp220 in winter?" incident --------------------------------------------
 
 class FakeRouter:
-    async def route(self, question):
-        return PreLLMExtraction(retrieval=RetrievalPlan(requests=[WINTER_OFFERINGS], semantic_fallback=False)), ENTITIES
+    async def route(self, question, earlier):
+        return PreLLMExtraction(retrieval=RetrievalPlan(requests=[WINTER_OFFERINGS], semantic_fallback=False)), ENTITIES, {}
 
 
 class FakeStructured:
@@ -123,7 +124,7 @@ async def test_failed_planned_request_reaches_the_answer_context():
     )
     orchestrator.db_evidence_selector = SimpleNamespace(select=lambda evidence, profile: evidence)
 
-    context = await orchestrator.resolve_context("cp220 in winter?")
+    context = await orchestrator.resolve_context("cp220 in winter?", TurnRecorder(), {})
 
     # The Fall evidence is still there, but the model is now told the winter part is unanswered.
     assert "Fall 2026 sections" in context.context_text

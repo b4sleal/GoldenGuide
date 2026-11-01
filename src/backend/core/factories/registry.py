@@ -4,6 +4,7 @@ Adding a provider: implement the adapter in infra, add its enum value, register 
 """
 from backend.infra.persistence.db.app.base.settings_repo import SqlSettingsRepository
 from backend.infra.persistence.db.app.base.document_repo import SqlDocumentRepository
+from backend.infra.persistence.db.app.base.conversation_repo import SqlConversationRepository
 from backend.infra.persistence.db.app.base.job_repo import SqlJobRepository
 from backend.infra.persistence.db.dialects.postgres import PostgresDialectOps
 from backend.domain.common import providers_enum as Providers
@@ -76,6 +77,7 @@ APP_REPO_REGISTRY = {
         documents=lambda session: SqlDocumentRepository(session, POSTGRES_OPS),
         settings=lambda session: SqlSettingsRepository(session),
         jobs=lambda session: SqlJobRepository(session, POSTGRES_OPS),
+        conversations=lambda session: SqlConversationRepository(session, POSTGRES_OPS),
     ),
 }
 

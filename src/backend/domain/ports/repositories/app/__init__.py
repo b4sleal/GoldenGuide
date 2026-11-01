@@ -1,1 +1,1 @@
-"""Application database repositories: documents, settings, jobs."""
+"""Application database repositories: documents, settings, jobs, conversations."""

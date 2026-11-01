@@ -23,13 +23,16 @@ class PoolTerm:
     term: str
     canonical: str
     entity_type: EntityType
+    # Subject codes ("IT", "CP") match only as written in capitals: in lower case they are ordinary
+    # words ("is it offered?" is not Italian). Names and aliases match in any case.
+    case_sensitive: bool = False
 
 
 @lru_cache(maxsize=8192)
-def whole_word(term: str) -> re.Pattern:
-    """Case-insensitive whole-word pattern, compiled once per term (lexicon aliases and catalog subjects
-    are a few thousand fixed strings, so the cache holds them all)."""
-    return re.compile(rf'\b{re.escape(term)}\b', re.IGNORECASE)
+def whole_word(term: str, case_sensitive: bool) -> re.Pattern:
+    """Whole-word pattern, compiled once per term (lexicon aliases and catalog subjects are a few
+    thousand fixed strings, so the cache holds them all)."""
+    return re.compile(rf'\b{re.escape(term)}\b', 0 if case_sensitive else re.IGNORECASE)
 
 
 class LexiconEntityMatcher:
@@ -43,10 +46,16 @@ class LexiconEntityMatcher:
         self.lexicon_resolver = lexicon_resolver
         # The lexicon is fixed configuration: build its part of the pool once, not per question.
         self.lexicon_pool = [
-            PoolTerm(alias.lower(), lexicon_resolver.resolve(section, alias), entity_type)
+            self._pool_term(section, alias, entity_type)
             for section, entity_type in SWEPT_SECTIONS.items()
             for alias in lexicon_resolver.get_aliases(section)
         ]
+
+    def _pool_term(self, section: LexiconEntityType, alias: str, entity_type: EntityType) -> PoolTerm:
+        canonical = self.lexicon_resolver.resolve(section, alias)
+        if alias in self.lexicon_resolver.course_codes(section):
+            return PoolTerm(alias.upper(), canonical, entity_type, case_sensitive=True)
+        return PoolTerm(alias.lower(), canonical, entity_type)
 
     def apply(self, state: MaskingState, lookup: EntityLookup) -> None:
         # Lexicon aliases, plus catalog subject names (subjects missing from the lexicon), which come from data.
@@ -56,7 +65,7 @@ class LexiconEntityMatcher:
         pool.sort(key=lambda item: len(item.term), reverse=True)
 
         for item in pool:
-            pattern = whole_word(item.term)
+            pattern = whole_word(item.term, item.case_sensitive)
             if not pattern.search(state.text):
                 continue
 

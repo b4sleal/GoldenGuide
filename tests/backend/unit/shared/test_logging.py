@@ -1,8 +1,11 @@
-"""Secret redaction and @traced async-generator behavior.
+"""Secret redaction and @traced span behavior.
 
 Logging pipeline, trace correlation, settings and exporter tests live in
 tests/backend/unit/domain/settings/test_{logging,telemetry}_runtime.py.
 """
+import asyncio
+import time
+
 import pytest
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -88,3 +91,44 @@ async def test_async_generator_closed_early_still_ends_span(spans):
     await generator.aclose()  # e.g. the student closed the tab mid-answer
     assert closed == [True]
     assert [s.name for s in spans.get_finished_spans()] == ["unit.stream_early"]
+
+
+async def test_async_failure_records_exception_and_duration(spans):
+    @traced("chat.router")
+    async def fail():
+        await asyncio.sleep(0.012)
+        raise RuntimeError("router unavailable")
+
+    with pytest.raises(RuntimeError, match="router unavailable"):
+        await fail()
+    span, = spans.get_finished_spans()
+    assert span.name == "chat.router"
+    assert span.end_time - span.start_time >= 8_000_000  # ns; real awaited time.
+    assert span.status.status_code.name == "ERROR"
+    assert any(e.name == "exception" and "router unavailable" in str(e.attributes) for e in span.events)
+
+
+async def test_async_stream_span_lasts_until_consumed(spans):
+    @traced("chat.stream")
+    async def stream():
+        yield "first"
+        await asyncio.sleep(0.012)
+        yield "second"
+
+    generated = stream()
+    assert spans.get_finished_spans() == ()
+    assert [item async for item in generated] == ["first", "second"]
+    span, = spans.get_finished_spans()
+    assert span.end_time - span.start_time >= 8_000_000
+
+
+def test_sync_operation_records_duration(spans):
+    @traced("course.compile")
+    def compile_course():
+        time.sleep(0.01)
+        return "ok"
+
+    assert compile_course() == "ok"
+    span, = spans.get_finished_spans()
+    assert span.name == "course.compile"
+    assert span.end_time - span.start_time >= 7_000_000

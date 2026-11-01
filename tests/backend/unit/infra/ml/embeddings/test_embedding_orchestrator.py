@@ -3,11 +3,13 @@
 import asyncio
 from unittest.mock import AsyncMock
 
+import numpy as np
 import pytest
 
 from backend.domain.ports.providers.embedding import Embedding
 from backend.domain.settings.embedding import OpenAIEmbeddingSettings
 from backend.domain.settings.profiles import EmbeddingProfile
+from backend.infra.ml.embeddings.gemini import normalize_rows
 from backend.infra.ml.embeddings.standard_orchestrator import (
     StandardEmbeddingOrchestrator,
 )
@@ -102,3 +104,10 @@ async def test_cancellation_propagates_to_the_caller():
 
     with pytest.raises(asyncio.CancelledError):
         await service.embed_query("question", profile("selected"))
+
+
+def test_each_vector_is_normalized_on_its_own():
+    rows = normalize_rows([[3.0, 4.0], [0.0, 10.0], [0.0, 0.0]])
+
+    assert np.allclose(np.linalg.norm(rows[:2], axis=1), 1.0)
+    assert rows[2] == [0.0, 0.0]  # A zero vector stays zero instead of dividing by zero.

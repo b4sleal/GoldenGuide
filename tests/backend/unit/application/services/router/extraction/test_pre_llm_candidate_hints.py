@@ -37,6 +37,7 @@ async def test_fuzzy_candidate_is_not_a_selected_degree():
         "Psychology" if value == "psychology" else None
     )
     resolver.resolve_course_code.return_value = None
+    resolver.course_codes.return_value = frozenset()
 
     extractor = PreLLMExtractor(cache, [
         CourseCodeMatcher(resolver), LexiconEntityMatcher(resolver), DepartmentHintMatcher(resolver),

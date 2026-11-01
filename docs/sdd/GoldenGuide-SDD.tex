@@ -103,7 +103,7 @@
 \begin{titlepage}
   \centering
   \vspace*{2cm}
-  \IfFileExists{../../src/frontend/GoldenGuideLogo.png}{\includegraphics[width=3cm]{../../src/frontend/GoldenGuideLogo.png}\par\vspace{1cm}}{}
+  \IfFileExists{../../frontend/public/logo.png}{\includegraphics[width=3cm]{../../frontend/public/logo.png}\par\vspace{1cm}}{}
   {\Huge\bfseries\color{lauPurple} GoldenGuide\par}
   \vspace{0.4cm}
   {\Large A grounded academic assistant for Wilfrid Laurier University\par}
@@ -116,8 +116,8 @@
   \vfill
   \begin{tabular}{@{}ll@{}}
     \textbf{Author} & Basleal Abshiro (b4sleal) \\
-    \textbf{Version} & 1.2 \\
-    \textbf{Date} & October 30, 2026 \\
+    \textbf{Version} & 1.4 \\
+    \textbf{Date} & November 1, 2026 \\
     \textbf{Status} & Describes the implemented system \\
     \textbf{Repository} & \url{https://github.com/b4sleal/GoldenGuide} \\
     \textbf{Live system} & \url{https://askgoldenguide.ca} \\
@@ -135,6 +135,8 @@
 1.0 & 2026-10-30 & Basleal Abshiro & Initial release describing the implemented system: collection, storage, indexing, embedding service, question answering, security, configuration, observability, deployment and verification. \\
 1.1 & 2026-10-30 & Basleal Abshiro & Added the staging environment and per-environment configuration files; corrected the description of retrieval profile fallback (semantic search only; no answer-model fallback configured). \\
 1.2 & 2026-10-30 & Basleal Abshiro & Staging and production run their own Keycloak with a hosted realm that seeds the first administrator; each environment has its own Compose project name and data volumes; the pre-release database migrations were folded into a single baseline; the API documentation's inline script is allowed by hash in the content security policy. \\
+1.3 & 2026-10-31 & Basleal Abshiro & Multiple machines over Tailscale: each machine's \texttt{tailscale} container is its own private device and forwards that machine's services by name, so a stack can be split by role (data node, application node) with one env file per machine; the \texttt{services} profile groups the shared data stores and Keycloak; env files choose their Compose files and profiles, so commands no longer repeat them; the backend waits for a healthy Keycloak; the IDE workspace is part of the development stack. \\
+1.4 & 2026-11-01 & Basleal Abshiro & React web client replaces the static page (new Web Client chapter and decision D13); stored conversations with follow-up memory, answer snapshots and feedback (tables \texttt{conversations}, \texttt{chat\_messages}, \texttt{message\_feedback}); conversation and feedback endpoints; \texttt{status} stream event; frontend tests; roadmap updated. \\
 \bottomrule
 \end{tabularx}
 
@@ -196,7 +198,7 @@ grounded retrieval-augmented generation (RAG) systems.
 Chapter~\ref{ch:requirements} lists requirements and constraints. Chapter~\ref{ch:architecture}
 presents the architecture and Chapter~\ref{ch:decisions} the design decisions with their
 alternatives. Chapters~\ref{ch:collection}--\ref{ch:cross} give the detailed design of each
-subsystem, from crawling and storage to question answering. Chapters~\ref{ch:data}--\ref{ch:interaction}
+subsystem, from crawling and storage to question answering and the web client. Chapters~\ref{ch:data}--\ref{ch:interaction}
 cover data, interfaces and interactions. Chapters~\ref{ch:quality}--\ref{ch:risks} cover quality
 attributes, deployment, verification, risks and the roadmap. Appendices contain a glossary, the
 repository layout and the configuration catalogue.
@@ -230,6 +232,7 @@ F11 & Refresh all sources nightly without manual intervention. \\
 F12 & Let administrators run jobs, view their status, change runtime settings and upload documents. \\
 F13 & Sign users in through an institutional OpenID Connect provider with explicitly mapped roles. \\
 F14 & Let automation call administrative operations with narrowly scoped, revocable credentials. \\
+F15 & Keep conversations so students can return to them, ask follow-up questions that refer to earlier turns, and rate answers. \\
 \bottomrule
 \end{longtable}
 
@@ -369,7 +372,7 @@ minio & Locked version & S3-compatible object storage for raw sources and upload
 redis & redis:7-alpine & Critical session, OAuth and rate-limit state (append-only persistence) and optional caches. \\
 keycloak & Keycloak 26 & OpenID Connect provider: a development realm locally, and a hosted realm (one Keycloak per environment) for staging and production. \\
 observability & Upstream images & OpenTelemetry Collector, Jaeger, Alloy, Loki, Grafana. \\
-tailscale, tunnel & Upstream images & Private network between machines; public ingress without inbound ports. \\
+tailscale, tunnel & Upstream images & Private network between machines (this machine's Tailscale device, forwarding its services to other tailnet devices only); public ingress without inbound ports. \\
 \bottomrule
 \end{longtable}
 
@@ -520,6 +523,19 @@ privileges. No custom cryptography or session mechanisms.
 \field{Rationale} A plain streamed POST passes through every proxy and Cloudflare without upgrade
 handling, carries typed events (text, citation, table, sources) and is trivial to parse. Once
 streaming starts the HTTP status cannot change, so completion must be signalled in-band.
+\end{decision}
+
+\begin{decision}{D13}{React single-page client on the same origin as the API}
+\field{Decision} A React, TypeScript and Vite single-page application, built to static files and
+served by Nginx (or FastAPI) on the same origin as the API.\par
+\field{Alternatives} Next.js; a chat SDK such as Vercel AI SDK \texttt{useChat}; the previous plain
+HTML and JavaScript page.\par
+\field{Rationale} Same origin keeps the device cookie, server-side session and same-origin checks
+unchanged, and FastAPI remains the only backend. Next.js would add a Node server duplicating session
+and CSRF handling, and SEO does not matter for a chat app. Chat SDKs expect their own stream protocol.
+API types are generated from OpenAPI, so a contract change fails the frontend build.\par
+\field{Consequences} The NDJSON stream is outside OpenAPI, so the client validates each event at
+runtime; the runtime image must be rebuilt to ship a UI change.
 \end{decision}
 
 \begin{decision}{D12}{Docker Compose with profiles as the deployment unit}
@@ -975,11 +991,90 @@ Truncated & Retrieval hit a limit & Results are partial; more exist \\
 \end{tabularx}
 \end{table}
 
+\section{Conversations and follow-up questions}
+\begin{itemize}
+  \item Every turn is stored: the question before answering, the answer however the stream ends
+        (complete, error or interrupted), in a shielded final save that a disconnect cannot cancel.
+        Assistant messages keep diagnostics: query plan, retrieval outcomes, sources, profile,
+        settings version, timings, \texttt{trace\_id} and \texttt{request\_id}.
+  \item Storing history is best-effort: if it fails the answer still streams and the failure is logged.
+  \item Follow-ups: the last completed turns (bounded by \code{configs/catalogs/chat/chat.yml}) are sent
+        to the answer model for meaning only; retrieval runs again and citations always come from the
+        current question's evidence. The previous answer's entities are offered to the router under
+        \texttt{[EARLIER\_...]} masks, so ``is it offered in winter?'' resolves deterministically; plan
+        validation rejects any mask outside the current and carried sets.
+  \item Each answer also stores a versioned snapshot of its displayed blocks (text, citations, tables),
+        so history renders exactly as the live answer did.
+  \item Ownership is the anonymous \texttt{gg\_client} device cookie, stored as a SHA-256 hash.
+        Retention is not yet built.
+\end{itemize}
+
+% =============================================================================================
+\chapter{Web Client}\label{ch:client}
+% =============================================================================================
+The web client in \code{frontend/} is a React single-page application (decision D13). It holds no
+academic logic: it sends questions, renders the stream and shows stored conversations.
+
+\begin{table}[H]
+\centering
+\caption{Web client stack}\label{tab:clientstack}
+\begin{tabularx}{\textwidth}{@{}P{3.6cm}L@{}}
+\toprule
+\textbf{Concern} & \textbf{Choice} \\
+\midrule
+Application & React 19, TypeScript (strict), Vite \\
+Routing and server state & TanStack Router (\texttt{/}, \texttt{/c/\$conversationId}); TanStack Query \\
+API types & Generated from the backend's OpenAPI document; \texttt{openapi-fetch} \\
+Stream validation & Zod schema per event \\
+Interface & Tailwind CSS, shadcn/ui (Radix), \texttt{react-markdown} without raw HTML \\
+Tests & Vitest, Testing Library, Mock Service Worker, Playwright \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Answer streaming}
+\begin{itemize}
+  \item A reader decodes the response incrementally and parses complete lines only, so lines and
+        multi-byte characters split across network chunks are handled.
+  \item Each line is validated. Unknown event types are skipped so additive backend changes do not
+        break deployed clients; a known type with the wrong shape is a protocol error, never rendered.
+  \item A pure state machine turns events into an answer with one of six phases: pending, streaming,
+        complete (last event \texttt{ok}), error, interrupted (no terminal event) and stopped (the
+        student pressed Stop). Partial text is kept but always marked incomplete.
+  \item Tables are rendered from \texttt{table} event data, never through Markdown, so scraped
+        characters cannot change their structure. Citations become numbered links to their sources.
+\end{itemize}
+
+\section{Conversations in the client}
+\begin{itemize}
+  \item The live chat session sits above the routes, so a new chat's first answer keeps streaming
+        when the URL changes to the conversation returned in \texttt{X-Conversation-Id}.
+  \item Stored answers are replayed from their snapshots through the same state machine and
+        renderers as live answers; older messages fall back to their text.
+  \item Status events carry codes only; the client owns all student-facing wording, including the
+        name of the source being searched (``Searching LORIS registration\ldots'').
+\end{itemize}
+
+\section{Serving}
+\begin{table}[H]
+\centering
+\caption{Ways the client is served}\label{tab:clientserve}
+\begin{tabularx}{\textwidth}{@{}P{3.6cm}L@{}}
+\toprule
+\textbf{Mode} & \textbf{How} \\
+\midrule
+Runtime image & A Node stage builds the app; Nginx serves it with a client-route fallback, \texttt{index.html} uncached and hashed assets cached as immutable, and proxies \texttt{/api} unbuffered \\
+Docker development & Nginx proxies the UI and hot-reload socket to an internal Vite service; source is bind-mounted \\
+FastAPI only & \texttt{SERVE\_FRONTEND=true} serves the built files with the same fallback; startup fails if the build is missing \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
 % =============================================================================================
 \chapter{Cross-cutting Concerns}\label{ch:cross}
 % =============================================================================================
 
-\section{Authentication and authorization}
+\section{Authentication and authorization}\label{sec:auth}
 \begin{table}[H]
 \centering
 \caption{Access policy}\label{tab:access}
@@ -1077,6 +1172,20 @@ lists every configuration file.
 \caption{PostgreSQL entities (arrows point from child to parent)}\label{fig:er}
 \end{figure}
 
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=10mm and 9mm,
+  ent/.style={rectangle split,rectangle split parts=2,draw=lauPurple,font=\scriptsize,
+              text width=40mm,align=left,rectangle split part fill={softPurple,white}}]
+  \node[ent] (conv) {\textbf{conversations}\nodepart{two}id PK (UUID)\\owner\_subject, client\_id\_hash,\\title, created/updated};
+  \node[ent,right=of conv] (msg) {\textbf{chat\_messages}\nodepart{two}id PK, conversation\_id FK\\position, role, content, status,\\answer\_content, sources,\\carried\_entities, query\_plan,\\retrieval\_outcomes, timings,\\trace\_id, request\_id, error\_*};
+  \node[ent,right=of msg] (fb) {\textbf{message\_feedback}\nodepart{two}id PK, message\_id FK\\rating, reason, comment,\\created/updated};
+  \draw[arr] (msg) -- node[lbl]{N:1} (conv);
+  \draw[arr] (fb) -- node[lbl]{1:1} (msg);
+\end{tikzpicture}
+\caption{Conversation entities (deleting a conversation cascades to its messages and feedback)}\label{fig:erconv}
+\end{figure}
+
 \begin{table}[H]
 \centering
 \caption{Natural keys}\label{tab:keys}
@@ -1088,6 +1197,8 @@ lists every configuration file.
 \texttt{course\_terms} & term code, CRN & A LORIS section is unique within its term (\texttt{CourseTerm} offering) \\
 \texttt{wlu\_pages}, \texttt{scrape\_pages} & URL, version & The same page in different calendar years is a different record \\
 \texttt{job\_batches} & run, batch number & A batch is replayed by position, never duplicated \\
+\texttt{chat\_messages} & conversation, position & Turns keep a strict order within a conversation \\
+\texttt{message\_feedback} & message & One rating per answer; rating again replaces it \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -1136,8 +1247,11 @@ All routes are under \texttt{/api/v1}; administrators can browse OpenAPI documen
 \textbf{Method and path} & \textbf{Access} & \textbf{Purpose} \\
 \midrule
 \endhead
-\texttt{POST /chat/stream} & Public, rate-limited & Ask a question; NDJSON stream \\
-\texttt{POST /chat/feedback} & Public & Planned (\texttt{501}) \\
+\texttt{POST /chat/stream} & Public, rate-limited & Ask a question; NDJSON stream; conversation ID in \texttt{X-Conversation-Id} \\
+\texttt{GET /chat/conversations} & Device owner, rate-limited & This device's conversations \\
+\texttt{GET} \code{/chat/conversations/\{id\}/messages} & Device owner, rate-limited & Stored turns with answer snapshots and sources \\
+\texttt{DELETE} \code{/chat/conversations/\{id\}} & Device owner, same origin & Delete a conversation \\
+\texttt{PUT} \code{/chat/messages/\{id\}/feedback} & Device owner, same origin & Rate an answer, with an optional reason \\
 \texttt{GET /auth/login}, \texttt{/auth/callback} & Public & OpenID Connect sign-in \\
 \texttt{GET /auth/me}, \texttt{POST /auth/logout} & Signed in & Current principal; end session \\
 \texttt{GET}, \texttt{PATCH /admin/settings/} & settings:write & Runtime defaults (versioned) \\
@@ -1159,6 +1273,7 @@ All routes are under \texttt{/api/v1}; administrators can browse OpenAPI documen
 \toprule
 \textbf{Event} & \textbf{Meaning} \\
 \midrule
+\texttt{\{"type": "status", "stage": ..., "source": ...\}} & Progress before the text, not terminal: \texttt{understanding}, \texttt{searching} (with the source from the plan) or \texttt{writing}; codes only \\
 \texttt{\{"type": "text", "text": ...\}} & Answer text, in order \\
 \texttt{\{"type": "citation", ...\}} & Citation marker with source numbers and URLs \\
 \texttt{\{"type": "table", ...\}} & Table of database records, with title, columns and rows \\
@@ -1208,7 +1323,7 @@ An answer is complete only if the last event is \texttt{ok}; a stream ending wit
   \draw[msg] (2,-13.6) -- node[mlabel]{rerank} (6,-13.6);
   \draw[msg] (2,-14.7) -- node[mlabel]{prompt: sources, tables, limitations} (8,-14.7);
   \draw[ret] (8,-15.6) -- node[mlabel]{streamed text} (2,-15.6);
-  \draw[ret] (2,-16.5) -- node[mlabel]{text, citation, table, sources, ok} (0,-16.5);
+  \draw[ret] (2,-16.5) -- node[mlabel]{status, text, citation, table, sources, ok} (0,-16.5);
   \node[font=\scriptsize,color=lineGrey,anchor=west] at (6.1,-12.7) {};
   \node[draw=lauGold,dashed,fit={(5.6,-11.3) (7.4,-14.0)},inner sep=1pt,
         label={[font=\scriptsize,color=lauGold!70!black]right:optional}] {};
@@ -1301,7 +1416,7 @@ N10 Politeness & RFC 9309 robots.txt handling; conditional requests; bounded con
 \toprule
 \textbf{Environment} & \textbf{Shape} \\
 \midrule
-Development & One machine, configured by \code{.env}: base Compose file plus development overrides (source mounts, auto-reload, shared development virtual environment, test database), Keycloak, full observability. A developer may expose it through their own Cloudflare Tunnel. \\
+Development & One machine by default, configured by \code{.env}: base Compose file plus development overrides (source mounts, auto-reload, shared development virtual environment, IDE workspace, test database), full observability; Keycloak only when sign-in is tested. It may instead be split across machines by role over Tailscale, one env file per machine (Section~\ref{sec:multi-machine}). A developer may expose it through their own Cloudflare Tunnel. \\
 Staging & A production-style stack for the team (QA, staff), configured by \code{.env.staging}: the production Compose overrides with its own data stores, credentials, OIDC client and Cloudflare Tunnel at staging.askgoldenguide.ca, intended to be limited to the team by a Cloudflare Access policy. Today the backend's production-only startup checks (HTTPS origin, no \texttt{LOCAL\_ADMIN}, required trace exporter) apply only when \texttt{APP\_ENV} is \texttt{production} (risk R12). \\
 Current production & Base Compose file plus production overrides (all credentials required), configured by \code{.env.prod}, on one self-hosted machine; public access through a Cloudflare Tunnel to askgoldenguide.ca; optional additional machines over Tailscale. \\
 Planned cloud & ECS/Fargate for the API and provision job; a GPU instance for embeddings; RDS (PostgreSQL), ElastiCache (Redis), S3 (objects), managed or self-hosted Qdrant; Secrets Manager behind \texttt{SecretReader}; Entra ID for sign-in. \\
@@ -1310,7 +1425,9 @@ Planned cloud & ECS/Fargate for the API and provision job; a GPU instance for em
 \end{table}
 
 Each environment has its own env file, selected with \texttt{docker compose -{}-env-file}; the file also sets
-\texttt{ENV\_FILE} so the containers read the same values. Only the \code{.env.dev.example},
+\texttt{ENV\_FILE} so the containers read the same values, and \texttt{COMPOSE\_FILE} and
+\texttt{COMPOSE\_PROFILES} so commands need no \texttt{-f} or \texttt{-{}-profile} flags
+(\texttt{docker compose up -d}, \texttt{docker compose -{}-env-file .env.prod up -d}). Only the \code{.env.dev.example},
 \code{.env.staging.example} and \code{.env.prod.example} templates are committed. The staging and production
 templates leave every credential blank, so a deployment cannot start with default passwords. In a larger
 deployment the same values are injected as environment variables by a secret manager or the deployment
@@ -1324,12 +1441,44 @@ through their tunnel; the administration console paths are limited to the team b
 Profiles select service groups (\texttt{database}, \texttt{vector-store}, \texttt{object-store},
 \texttt{state\_store}, \texttt{provision}, \texttt{backend}, \texttt{frontend}, \texttt{auth},
 \texttt{observability}, \texttt{log-shipper}, \texttt{tailnet}, \texttt{tunnel}); the aggregates
-\texttt{all} includes everything except the embedding service, and \texttt{all-dev} also leaves out the
-tunnel and Keycloak (sign-in is off in development; \texttt{auth} adds Keycloak). The embedding service is
+\texttt{all} includes everything except the embedding service, \texttt{all-dev} also leaves out the
+tunnel and Keycloak (sign-in is off in development; \texttt{auth} adds Keycloak) and adds the IDE
+workspace, and \texttt{services} holds the shared data stores and Keycloak for a machine that serves
+them to others. \texttt{tailnet} is in no aggregate, so a single machine never joins a network. The embedding service is
 chosen explicitly with \texttt{embedding-gpu} or \texttt{embedding-cpu} (or neither when another machine
 runs it). One multi-stage Dockerfile builds every Python image: a non-root base, a toolchain with the
 locked uv version, a development stage, a builder that installs one dependency group with
 \texttt{uv sync -{}-locked}, and a minimal runtime stage without compilers.
+
+\section{Multiple machines}\label{sec:multi-machine}
+Docker is the only requirement for one machine. Splitting the stack across machines is optional and
+uses Tailscale, a private WireGuard network: each machine runs only its own profiles, for example a
+\emph{data node} with the data stores, provisioning and GPU embeddings, and an \emph{application node}
+with the backend, frontend and observability. Each machine has its own env file (\texttt{ENV\_FILE},
+\texttt{MACHINE\_NAME}, its profiles plus \texttt{tailnet}), and names the others once, e.g.
+\texttt{DATA\_NODE\_HOST}, which client settings reference
+(\texttt{DB\_\_POSTGRES\_\_HOST="\$\{DATA\_NODE\_HOST\}"}); no IP addresses are configured.
+
+\begin{itemize}
+  \item \textbf{Incoming.} The \texttt{tailscale} container is its own tailnet device,
+  \texttt{<MACHINE\_NAME>-docker}, on the Compose networks. It forwards a fixed list of ports
+  (\code{deploy/tailscale/serve.json}) to services by name, so only devices on the tailnet reach them.
+  Nothing extra is published on the host: every published port stays on loopback, which keeps
+  local-admin requests (Section~\ref{sec:auth}) limited to the machine itself. It runs in userspace
+  mode, so it needs no extra privileges, and works the same on Docker Desktop and Linux.
+  \item \textbf{Outgoing.} Containers that call another machine (the backend, and logs and traces
+  sent to the observability machine) reach tailnet names through the host's Tailscale client today.
+  A gateway container sharing the \texttt{tailscale} container's network would make Docker the only
+  install on every machine; it is future work.
+  \item \textbf{Observability.} One machine runs the \texttt{observability} profile; the others run
+  \texttt{log-shipper} and send logs and traces to it. \texttt{MACHINE\_NAME} labels every log line, so
+  Grafana shows all machines together.
+\end{itemize}
+
+This was verified with the data node on one machine and the application node on another. Every
+forwarded port is open to the whole tailnet, so a shared tailnet needs Tailscale access rules; and
+PostgreSQL and Redis rely on the tailnet for encryption (risk R5). Production replaces this with
+managed endpoints on a private network and a secret manager (Table~\ref{tab:envs}, planned cloud).
 
 \section{Resources and storage}
 Every container has CPU and memory limits with swap disabled. Large dependencies are stored once:
@@ -1354,6 +1503,7 @@ upgrading them is a deliberate step.
 Unit & Nothing (fakes at domain ports) & Extraction, term resolution, plan validation, compilers, evidence budgeting, streaming, authorization decisions, use cases \\
 Integration & Real PostgreSQL, Redis, Qdrant & SQL filters and upserts, migrations (round trips), transactions, Redis atomicity and TTLs, Qdrant search; shared adapter contract suites \\
 Evaluation & Running stack and data & Whether each benchmark question's answering page reaches the answer model, before and after reranking, with timings; end-to-end answers on demand \\
+Frontend & Node only (API mocked) & Stream parsing and answer phases, history replay, chat page and composer, tables, sources, copy, theme (Vitest, Mock Service Worker); the production build in desktop and phone viewports (Playwright) \\
 \bottomrule
 \end{tabularx}
 \end{table}
@@ -1391,6 +1541,8 @@ R10 & Chat is public & Abuse and cost & Redis-backed rate limits; student-only p
 R11 & Local administrator relies on loopback-bound ports & Exposure if ports are published widely & Disabled by default; refused in production; documented \\
 R12 & Staging does not enforce the production-only startup checks & Staging could run with an HTTP origin or \texttt{LOCAL\_ADMIN} that production would refuse & Apply the checks to staging as well; the staging template sets safe values \\
 R13 & Staging and production Keycloak run in development mode with its built-in database & Limited durability and hardening of the identity provider & Suitable for a small team; move to production mode with PostgreSQL and backups, or to WLU's Entra ID \\
+R14 & Conversations are kept with no retention period & Student data accumulates & Add a retention job; deleting a conversation is already available \\
+R15 & Live answers do not know their stored message ID & Feedback only on answers reloaded from history & Return the message ID in the stream \\
 \bottomrule
 \end{longtable}
 
@@ -1399,8 +1551,15 @@ R13 & Staging and production Keycloak run in development mode with its built-in 
   \item Microsoft Entra ID sign-in for students and faculty, with a faculty role.
   \item Course syllabi and faculty documents as sources.
   \item Routing simple questions to cheaper retrieval profiles.
-  \item AWS deployment.
-  \item Readiness endpoint, chat feedback and a durable job worker.
+  \item AWS deployment, and a secret manager in place of env files for staging and production.
+  \item A Docker-only Tailscale gateway for outgoing connections, so no machine in a multi-machine
+        setup needs the Tailscale client installed.
+  \item Replicas with load balancing across machines (for example several GPU embedding machines
+        behind one name) through an orchestrator: Docker Swarm as the smaller step from Compose,
+        Kubernetes for autoscaling and GPU scheduling. Both need Linux hosts and an image registry.
+  \item Readiness endpoint and a durable job worker.
+  \item Web client: an evidence panel showing the cited page and excerpt, a term-aware prerequisite
+        graph, distinct screens for each retrieval outcome, and feedback on live answers.
   \item Import-linter contracts and broader evaluation coverage in CI.
 \end{enumerate}
 
@@ -1438,7 +1597,7 @@ ETag & An HTTP validator used for conditional re-fetching \\
 \code{src/backend/} & FastAPI application (domain, application, infra, api, core, shared) \\
 \code{src/embedding\_service/} & Embedding, sparse-vector and rerank service \\
 \code{src/goldenguide_common/} & Code shared by backend and embedding service \\
-\code{src/frontend/} & Static web interface \\
+\code{frontend/} & React web interface (Vite and TypeScript) \\
 \code{configs/} & Layered YAML configuration (Appendix~\ref{app:config}) \\
 \code{tests/backend/unit/}, \code{integration/} & Unit and integration tests mirroring the source layout \\
 \code{tests/eval/} & Retrieval-quality evaluation \\

@@ -9,19 +9,17 @@ ai_behavior:
   # 21: generation rule 15 shows course sections only through their table marker, never as prose.
   # 22: rule 9 lists every course detail for general course questions; rule 15's brevity is sections-only.
   # 23: rule 9 skips unspecified fields and follows the course details with its sections table.
-  # NOTE: prompts are filled with str.format, so never write literal braces in them.
-  version: 23
+  # 24: each prompt is split into `system` (fixed instructions, cacheable) and `turn` (per-question data).
+  # 25: router may use EARLIER_ entities carried from the previous turn for follow-up questions.
+  # NOTE: turn templates are filled with str.format, so never write literal braces in them.
+  version: 25
 
   runtime_defaults:
     router_llm:
-      prompt: |
+      system: |
         You are GoldenGuide's retrieval router for Wilfrid Laurier University.
         Interpret the student's question and select the minimum retrieval
         needed to answer every explicitly requested part. Do not answer.
-    
-        CONTEXT:
-        Date: {current_date}
-        Active registration term: {active_term}
     
         ROUTING:
         - courses: Course catalog facts, descriptions, prerequisites,
@@ -87,6 +85,14 @@ ai_behavior:
         - Never invent entity masks, course codes, restrictions or
           academic facts.
         - Do not reverse prerequisite relationships.
+        - Masks starting with EARLIER_ (e.g. [EARLIER_COURSE1]) are entities from
+          earlier in this conversation. Use one only when the question refers
+          back to it ("it", "that course", "the same program", a question with
+          no subject of its own). A newly named entity always wins over them.
+      turn: |
+        CONTEXT:
+        Date: {current_date}
+        Active registration term: {active_term}
     
         RECOGNIZED ENTITIES:
         {entities}
@@ -97,7 +103,7 @@ ai_behavior:
 
 # FIX [RETRIEVAL LIMITATIONS] IN CHAT
     generation_llm:
-      prompt: |
+      system: |
         You are GoldenGuide, an academic advisor and student assistant
         for Wilfrid Laurier University (WLU), introduce yourself as such.
         
@@ -231,7 +237,7 @@ ai_behavior:
 
         20. Answer from the source that directly matches the question.
             Leave out sources that are only loosely related to it.
-
+      turn: |
         TODAY:
         Date: {current_date}
         Terms to cover: {terms_to_cover}

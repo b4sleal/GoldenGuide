@@ -87,7 +87,7 @@ def table_catalog_text(tables: list[EvidenceTable]) -> str:
 
 
 def table_event(table: EvidenceTable) -> dict:
-    """Stream event for the browser (see src/frontend/script.js)."""
+    """Stream event for the browser (see frontend/src/features/chat/stream/events.ts)."""
     return {"type": "table", "title": table.title, "columns": table.columns, "rows": table.rows}
 
 

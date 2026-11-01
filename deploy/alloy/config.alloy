@@ -68,7 +68,7 @@ loki.process "goldenguide" {
 }
 
 // 5. Push to Loki: the local container by default, or another machine's Loki (LOKI_PUSH_URL)
-//    when observability runs elsewhere. `host` tells machines apart in Grafana: {host="pc"}.
+//    when observability runs elsewhere. `host` tells machines apart in Grafana: {host="data-node"}.
 loki.write "local" {
   endpoint {
     url = sys.env("LOKI_PUSH_URL")

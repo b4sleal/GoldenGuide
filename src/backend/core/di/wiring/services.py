@@ -9,8 +9,12 @@ from backend.application.services.jobs.job_submit import JobSubmissionService
 from backend.application.services.simple_scraping.service import (
     AsyncCrawlerRunner,
 )
+from backend.application.use_cases.chatbot.chat_turn import ChatTurn
 from backend.application.use_cases.chatbot.context_resolver import (
     RAGContextResolver,
+)
+from backend.application.use_cases.chatbot.conversation_history import (
+    ConversationHistory,
 )
 from backend.application.use_cases.chatbot.rag_chatbot import (
     RagChatbot,
@@ -143,6 +147,7 @@ class ServiceContainer(containers.DeclarativeContainer):
         blob_storage=persistence.app_blob_storage,
         reranker_orchestrator=ml.reranker_orchestrator,
         school_db=persistence.school_db,
+        institution=catalog.provided.institution,
     )
 
     academic_retrieval_orchestrator = providers.Singleton(
@@ -159,6 +164,20 @@ class ServiceContainer(containers.DeclarativeContainer):
         llm_strategy=ml.llm_orchestrator,
         settings_service=settings_service,
         term_resolver=router.academic_term_resolver,
+    )
+
+    conversation_history = providers.Singleton(
+        ConversationHistory,
+        app_db=persistence.app_db,
+        institution=catalog.provided.institution,
+    )
+
+    chat_turn = providers.Singleton(
+        ChatTurn,
+        chatbot=rag_chatbot,
+        app_db=persistence.app_db,
+        history=conversation_history,
+        history_settings=catalog.provided.chat.conversation_history,
     )
 
     knowledge_service = providers.Singleton(

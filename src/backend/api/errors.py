@@ -22,6 +22,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import Scope
 
 from backend.domain.errors import (
+    INTERNAL_ERROR_CODE,
     ConflictError,
     DeadlineExceededError,
     DependencyUnavailableError,
@@ -42,14 +43,14 @@ class PublicError:
     message: str
 
 
-# Domain error category -> (HTTP status, stable public code).
+# Domain error category -> HTTP status. The public code is the error's own (domain/errors.py).
 # Subclasses inherit their parent's mapping (see the MRO walk in classify()).
-_DOMAIN_ERRORS: dict[type[GoldenGuideError], tuple[int, str]] = {
-    InvalidInputError: (422, "invalid_input"),
-    NotFoundError: (404, "not_found"),
-    ConflictError: (409, "conflict"),
-    DependencyUnavailableError: (503, "dependency_unavailable"),
-    DeadlineExceededError: (504, "deadline_exceeded"),
+_DOMAIN_STATUS: dict[type[GoldenGuideError], int] = {
+    InvalidInputError: 422,
+    NotFoundError: 404,
+    ConflictError: 409,
+    DependencyUnavailableError: 503,
+    DeadlineExceededError: 504,
 }
 
 # HTTPException status -> stable public code. The frontend can switch on `code`
@@ -69,7 +70,7 @@ _HTTP_CODES: dict[int, str] = {
 }
 
 # Anything we did not anticipate. Never expose str(exc) for these: it can contain internals.
-INTERNAL_ERROR = PublicError(500, "internal_error", "Internal server error")
+INTERNAL_ERROR = PublicError(500, INTERNAL_ERROR_CODE, "Internal server error")
 
 
 def classify(exc: Exception) -> PublicError:
@@ -87,9 +88,8 @@ def classify(exc: Exception) -> PublicError:
     # 3. Domain errors. Walk the class hierarchy so subclasses use their parent's mapping.
     if isinstance(exc, GoldenGuideError):
         for cls in type(exc).__mro__:
-            if cls in _DOMAIN_ERRORS:
-                status, code = _DOMAIN_ERRORS[cls]
-                return PublicError(status, code, exc.public_message)
+            if cls in _DOMAIN_STATUS:
+                return PublicError(_DOMAIN_STATUS[cls], exc.code, exc.public_message)
 
     # 4. Everything else is a bug or an unclassified infrastructure failure.
     return INTERNAL_ERROR
@@ -123,16 +123,20 @@ def request_id_of(scope: Scope) -> str | None:
     return scope.get("state", {}).get("request_id")
 
 
+def current_trace_id() -> str | None:
+    """The active trace's ID in the 32-hex-digit form Jaeger/Grafana search expects (None if untraced)."""
+    ctx = trace.get_current_span().get_span_context()
+    return f"{ctx.trace_id:032x}" if ctx.is_valid else None
+
+
 def error_body(public: PublicError, request_id: str | None) -> dict:
     """Build the standard error envelope shared by JSON responses and stream error events."""
-    ctx = trace.get_current_span().get_span_context()
     return {
         "error": {
             "code": public.code,
             "message": public.message,
             "request_id": request_id,
-            # 32-hex-digit form is what Jaeger/Grafana search expects.
-            "trace_id": f"{ctx.trace_id:032x}" if ctx.is_valid else None,
+            "trace_id": current_trace_id(),
         }
     }
 

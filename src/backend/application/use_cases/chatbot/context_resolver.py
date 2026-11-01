@@ -1,28 +1,37 @@
 """Build the answer model's context: structured evidence first, then semantic (vector) search results.
 
 Semantic search runs through the profile's fallback chain (search -> rerank -> whole pages). Every
-source gets one numbered "--- SOURCE n ---" block and one citation entry; links inside the evidence are
-renumbered into request-wide @@n@@ placeholders that the link resolver restores in the streamed answer.
+reference gets one citation entry; LORIS sections share that entry while keeping distinct evidence
+blocks. Links inside the evidence are renumbered into request-wide @@n@@ placeholders that the link
+resolver restores in the streamed answer.
 """
 import re
 from urllib.parse import urlparse
 
 import structlog
 
-from backend.application.services.chatbot.reranking import drop_duplicate_chunks, rerank_hits
-from backend.application.use_cases.ingestion.upload_doc import document_blob_key
-from backend.domain.entities.ingestion_types import KnowledgeSourceType
+from backend.application.services.chatbot.reranking import (
+    drop_duplicate_chunks,
+    rerank_hits,
+)
 from backend.application.services.chatbot.retrieval_router import (
     RetrievalProfileRouter,
 )
-from backend.application.services.chatbot.whole_documents import expand_to_whole_documents
+from backend.application.services.chatbot.whole_documents import (
+    expand_to_whole_documents,
+)
+from backend.application.use_cases.chatbot.source_references import (
+    is_registration_source,
+    registration_source,
+)
+from backend.application.use_cases.ingestion.upload_doc import document_blob_key
+from backend.domain.entities.ingestion_types import KnowledgeSourceType
 from backend.domain.entities.retrieval import Evidence
 from backend.domain.ports.providers.blob import BlobStorage
 from backend.domain.ports.providers.embedding import (
     EmbeddingOrchestrator,
 )
 from backend.domain.ports.providers.reranker import RerankerOrchestrator
-from backend.domain.ports.repositories.school.school_db import SchoolDB
 from backend.domain.ports.providers.sparse import (
     SparseVectorizerOrchestrator,
 )
@@ -30,11 +39,13 @@ from backend.domain.ports.providers.vector_store.port import (
     VectorStore,
 )
 from backend.domain.ports.providers.vector_store.vector_models import RetrievedChunk
-from backend.domain.settings.profiles import RetrievalProfile
+from backend.domain.ports.repositories.school.school_db import SchoolDB
 from backend.domain.settings.ai_behavior import (
     RAGSource,
     ResolvedRAGContext,
 )
+from backend.domain.settings.institution import InstitutionProfile
+from backend.domain.settings.profiles import RetrievalProfile
 
 logger = structlog.get_logger(__name__)
 
@@ -51,6 +62,7 @@ class RAGContextResolver:
             blob_storage: BlobStorage,
             reranker_orchestrator: RerankerOrchestrator,
             school_db: SchoolDB,
+            institution: InstitutionProfile,
     ):
         self.router = router
         self.embedding = embedding_orchestrator
@@ -59,6 +71,7 @@ class RAGContextResolver:
         self.blob_storage = blob_storage
         self.reranker = reranker_orchestrator
         self.school_db = school_db
+        self.registration_url = str(institution.registration_url)
 
     @classmethod
     def _resolve_evidence_placeholders(
@@ -289,7 +302,7 @@ class RAGContextResolver:
         links: dict[str, str] = {}
 
         seen_chunks: set[str] = set()
-        source_indices: dict[str, int] = {}
+        source_indices: dict[tuple[str, str], int] = {}
 
         def add(
                 source_id: str,
@@ -308,17 +321,16 @@ class RAGContextResolver:
 
             seen_chunks.add(chunk_key)
 
-            if source_id not in source_indices:
-                sources.append(
-                    RAGSource(
-                        title=title,
-                        url=self._valid_url(url),
-                        source_type=source_type,
-                    )
-                )
-                source_indices[source_id] = len(sources)
+            source = RAGSource(title=title, url=self._valid_url(url), source_type=source_type)
+            registration = is_registration_source(source, self.registration_url)
+            # Keep each record's content/title and chunk identity, but share the registration
+            # citation before generation. The stream and recorder therefore use the same IDs.
+            reference_id = ("registration", self.registration_url) if registration else ("record", source_id)
+            if reference_id not in source_indices:
+                sources.append(registration_source(self.registration_url) if registration else source)
+                source_indices[reference_id] = len(sources)
 
-            number = source_indices[source_id]
+            number = source_indices[reference_id]
 
             blocks.append(
                 f"--- SOURCE {number} ({title}) ---\n{content}"

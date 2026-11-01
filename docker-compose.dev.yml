@@ -7,6 +7,7 @@
 #   - start-python-service.sh runs `uv sync` at startup so the dev venv matches uv.lock.
 #   - The backend auto-reloads when files under src/backend change.
 #   - The embedding services run their runtime images with source mounted over them (see below).
+#   - Nginx proxies the React UI to Vite, which hot-reloads the bind-mounted frontend source.
 # Profiles, limits, ports, and networks are inherited from docker-compose.yml.
 #
 # Splitting services across machines in development works the same way: add tailnet to each
@@ -71,10 +72,50 @@ services:
 
   local-embedding-cpu: *embedding-dev
 
-  # Serve the UI straight from source: refresh the browser to see changes.
+  # The public origin stays on Nginx; API/auth requests still go straight to the backend.
   frontend:
+    build:
+      target: development-proxy
+    image: goldenguide-frontend:development-proxy
+    depends_on:
+      frontend-vite:
+        condition: service_healthy
+
+  # Internal only: both HTTP and the HMR WebSocket are reached through frontend:8080.
+  frontend-vite:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+      target: development
+    image: goldenguide-frontend:development
+    profiles: [frontend, all, all-dev]
+    restart: unless-stopped
+    cpus: ${FRONTEND_DEV_CPUS:-1.0}
+    mem_limit: ${FRONTEND_DEV_MEMORY_LIMIT:-1g}
+    memswap_limit: ${FRONTEND_DEV_MEMORY_LIMIT:-1g}
+    logging:
+      driver: json-file
+      options:
+        max-size: ${CONTAINER_LOG_MAX_SIZE:-10m}
+        max-file: "3"
+    # Reconcile the persistent Linux dependencies on restart when the lockfile changes.
+    # Scope CI to install: pnpm can replace stale modules without a TTY; Vite keeps its dev environment.
+    command: [sh, -ec, "CI=true pnpm install --frozen-lockfile && exec pnpm dev --host 0.0.0.0"]
+    environment:
+      GG_BACKEND_ORIGIN: ${BACKEND_ORIGIN:-http://backend:8080}
+      GG_SITE_ORIGIN: ${SITE_ORIGIN:-http://localhost:8080}
+      # Docker Desktop bind mounts do not reliably deliver file-change events from Windows.
+      GG_WATCH_POLLING: ${FRONTEND_DEV_POLLING:-true}
     volumes:
-      - ./src/frontend:/usr/share/nginx/html:ro
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    healthcheck:
+      test: [CMD, wget, -qO-, http://127.0.0.1:5173/@vite/client]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 60s
+    networks: [public]
 
   db-bootstrap:
     # The test database is created only for development, never in the runtime configuration.
@@ -82,3 +123,4 @@ services:
 
 volumes:
   python_dev_env:
+  frontend_node_modules:

@@ -14,6 +14,7 @@ from backend.application.services.router.planning.llm.plan_validation import (
 from backend.application.services.router.planning.llm.response_model import (
     LLMPlanResponse,
 )
+from backend.domain.entities.llm import LLMRequest
 from backend.domain.entities.question import EntityMap, MaskedQuestion
 from backend.domain.entities.retrieval_plan import PreLLMExtraction
 from backend.domain.entities.wlu.academic_term import AcademicTermResolver
@@ -54,30 +55,33 @@ class LLMQueryPlanner:
         self.term_resolver = term_resolver
 
     @traced("router.llm_plan")
-    async def plan(self, question: str, masked: MaskedQuestion) -> PreLLMExtraction:
+    async def plan(self, question: str, masked: MaskedQuestion, earlier: EntityMap) -> PreLLMExtraction:
+        """Plan retrieval for `question`. `earlier` holds entities from the conversation so far under
+        EARLIER_ masks, so a follow-up ("is it offered in winter?") can refer back to them."""
         settings = await self.settings.get()
+        entities = masked.entities | earlier
         profile = self.retrieval_router.route_question(question)
         # Date and active term both come from the injected resolver, so they always agree.
         today = self.term_resolver.today()
 
-        prompt = (
-            settings.router_llm.prompt
+        turn = (
+            settings.router_llm.turn
             .replace("{current_date}", today.isoformat())
             .replace("{active_term}", self.term_resolver.current())
             .replace("{question}", f"{question}\nResolved entity references: {masked.text}")
-            .replace("{entities}", entities_json(masked.entities))
+            .replace("{entities}", entities_json(entities))
         )
 
         try:
             result = await self.llm.generate_structured(
-                prompt=prompt,
+                LLMRequest.single_turn(turn, system=settings.router_llm.system),
                 profile=profile.llm,
                 response_model=LLMPlanResponse,
             )
             result = validate_operations(result)
-            result = resolve_subject_references(result, masked.entities)
-            validate_entity_references(result, masked.entities)
-            result = normalize_program_operations(result, masked.entities)
+            result = resolve_subject_references(result, entities)
+            validate_entity_references(result, entities)
+            result = normalize_program_operations(result, entities)
             logger.info("router_validated", requests=len(result.retrieval.requests))
 
         except PlanRejected as exc:

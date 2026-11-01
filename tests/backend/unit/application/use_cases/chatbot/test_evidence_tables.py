@@ -2,6 +2,7 @@
 import json
 from datetime import date
 from types import SimpleNamespace
+from uuid import uuid4
 
 from backend.application.services.router.evidence.course_term_evidence import (
     meeting_days,
@@ -15,8 +16,14 @@ from backend.application.use_cases.chatbot.evidence_tables import (
     table_catalog_text,
 )
 from backend.application.use_cases.chatbot.rag_chatbot import RagChatbot
-from backend.domain.entities.wlu.academic_term import AcademicTermResolver
+from backend.application.use_cases.chatbot.turn_recorder import TurnRecorder
+from backend.domain.entities.conversations import (
+    ChatTurnContext,
+    ConversationMemory,
+    MessageStatus,
+)
 from backend.domain.entities.retrieval import Evidence, EvidenceTable, TableRow
+from backend.domain.entities.wlu.academic_term import AcademicTermResolver
 from backend.domain.entities.wlu.loris_registration import (
     CourseMeetingTime,
 )
@@ -135,7 +142,7 @@ class FakeRetrieval:
     def __init__(self, table: EvidenceTable = TABLE):
         self.table = table
 
-    async def resolve_context(self, question, top_k):
+    async def resolve_context(self, question, recorder, earlier, top_k):
         return ResolvedRAGContext.model_construct(
             context_text="records", sources=[], links={}, llm_profile=None, profile_name="t", tables=[self.table],
         )
@@ -145,13 +152,13 @@ class FakeSettings:
     async def get(self):
         return SimpleNamespace(
             version=16,
-            generation_llm=SimpleNamespace(prompt="{context_text}\n{question}"),
+            generation_llm=SimpleNamespace(system="rules", turn="{context_text}\n{question}"),
         )
 
 
 def chatbot(chunks: list[str], table: EvidenceTable = TABLE) -> RagChatbot:
     class FakeLLM:
-        async def generate_stream(self, prompt, profile):
+        async def generate_stream(self, request, profile):
             for chunk in chunks:
                 yield chunk
 
@@ -162,7 +169,7 @@ def chatbot(chunks: list[str], table: EvidenceTable = TABLE) -> RagChatbot:
 
 
 async def stream_types(bot: RagChatbot) -> list[str]:
-    return [json.loads(line)["type"] async for line in bot.ask("cp220 in winter?")]
+    return [json.loads(line)["type"] async for line in bot.ask("cp220 in winter?", TurnRecorder(), ConversationMemory())]
 
 
 async def test_model_placed_table_streams_in_place():
@@ -180,3 +187,24 @@ async def test_unplaced_table_is_appended_before_sources():
 async def test_unplaced_automatic_table_is_not_appended():
     types = await stream_types(chatbot(["CP220 requires CP104."], table=AUTOMATIC_TABLE))
     assert "table" not in types and types[-1] == "sources"
+
+
+async def test_placed_table_and_surrounding_text_are_recorded_after_marker_resolution():
+    recorder = TurnRecorder()
+    bot = chatbot(["Details:\n{{TAB", "LE:1}}\nAfter."])
+    events = [json.loads(line) async for line in bot.ask("cp220 in winter?", recorder, ConversationMemory())]
+    # The snapshot must contain resolved table data, never the model's placement marker.
+    saved = recorder.answer_message(uuid4(), ChatTurnContext(client_id_hash="device"), MessageStatus.COMPLETE)
+    blocks = saved.answer_content.model_dump()["blocks"]
+    assert [block["type"] for block in blocks] == ["text", "table", "text"]
+    assert blocks[0]["text"] == "Details:\n"
+    assert blocks[1] == next(event for event in events if event["type"] == "table")
+    assert blocks[2]["text"] == "\nAfter."
+
+
+async def test_unplaced_appended_table_is_also_recorded():
+    recorder = TurnRecorder()
+    bot = chatbot(["CP220 has two sections."])
+    _events = [line async for line in bot.ask("cp220 in winter?", recorder, ConversationMemory())]
+    saved = recorder.answer_message(uuid4(), ChatTurnContext(client_id_hash="device"), MessageStatus.COMPLETE)
+    assert [block.type for block in saved.answer_content.blocks] == ["text", "table"]

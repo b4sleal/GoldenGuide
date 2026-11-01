@@ -80,7 +80,8 @@ def validate_operations(plan: PreLLMExtraction) -> PreLLMExtraction:
 
 
 def resolve_subject_references(plan: PreLLMExtraction, entities: EntityMap) -> PreLLMExtraction:
-    """The LLM may write "CP" instead of "[DEPARTMENT1]": translate codes the extractor established.
+    """The LLM may write "CP" instead of "[DEPARTMENT1]", or "CP164" instead of "[EARLIER_COURSE1]":
+    translate codes of entities the extractor established (or the conversation carried).
 
     This is reference resolution, not fuzzy matching. Unknown codes stay unchanged and fail
     validate_entity_references.
@@ -89,6 +90,8 @@ def resolve_subject_references(plan: PreLLMExtraction, entities: EntityMap) -> P
     for mask, entity in entities.items():
         if isinstance(entity, DisciplineEntity) and entity.type in SUBJECT_TYPES and entity.code:
             code_masks.setdefault(entity.code.upper(), mask)
+        elif isinstance(entity, CourseEntity):
+            code_masks.setdefault(entity.normalized.upper(), mask)
 
     def resolve(reference: str) -> str:
         normalized = reference.strip().strip("[]").upper()
@@ -116,8 +119,8 @@ def resolve_subject_references(plan: PreLLMExtraction, entities: EntityMap) -> P
     return plan.model_copy(update={"global_filters": resolve_filters(plan.global_filters)})
 
 
-def validate_entity_references(plan: PreLLMExtraction, entities: EntityMap) -> None:
-    """Every mask the plan mentions must be one the extractor produced: the LLM may not invent entities."""
+def referenced_masks(plan: PreLLMExtraction) -> set[str]:
+    """Every entity mask the plan mentions, wherever it appears."""
     referenced = set(plan.course_specific_filters) | set(plan.extracted_entities_logic)
 
     for filters in [plan.global_filters, *(request.filters for request in plan.retrieval.requests)]:
@@ -126,8 +129,12 @@ def validate_entity_references(plan: PreLLMExtraction, entities: EntityMap) -> N
     for request in plan.retrieval.requests:
         referenced.update(request.entities)
     referenced.update(plan.conversation_context.completed_courses or [])
+    return referenced
 
-    unknown = referenced - set(entities)
+
+def validate_entity_references(plan: PreLLMExtraction, entities: EntityMap) -> None:
+    """Every mask the plan mentions must be one the extractor produced: the LLM may not invent entities."""
+    unknown = referenced_masks(plan) - set(entities)
     if unknown:
         raise PlanRejected(f"Router referenced unknown entities: {sorted(unknown)}")
 

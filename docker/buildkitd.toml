@@ -1,4 +1,4 @@
-# Applies to the dedicated docker-container builder documented in docs/docker.md.
+# Applies to the dedicated docker-container builder documented in docs/backend/docker.md.
 # One build step at a time reduces concurrent extraction/compilation and disk contention.
 [worker.oci]
 max-parallelism = 1

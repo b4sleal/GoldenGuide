@@ -1,7 +1,9 @@
 from datetime import datetime
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from backend.domain.entities.conversations import FeedbackRating, FeedbackReason
 from backend.domain.entities.jobs import JobMode, JobStatus
 from backend.domain.settings.scraping import Website
 
@@ -13,27 +15,18 @@ class ChatRequest(BaseModel):
         max_length=4000,
         description="Student question or request.",
     )
+    conversation_id: UUID | None = Field(
+        default=None,
+        description="Conversation to continue (from the X-Conversation-Id header); omit to start a new one.",
+    )
 
 
 class FeedbackRequest(BaseModel):
-    query: str = Field(
-        ...,
-        min_length=1,
-        max_length=4000,
-        description="Original user question.",
-    )
-    response: str = Field(
-        ...,
-        min_length=1,
-        max_length=12000,
-        description="Assistant response being rated.",
-    )
-    rating: int = Field(
-        ...,
-        ge=1, le=5, description="Feedback rating from 1 (poor) to 5 (excellent).",
-    )
+    rating: FeedbackRating = Field(..., description="Thumbs up or down for the answer.")
+    reason: FeedbackReason | None = Field(default=None, description="What was wrong, for a thumbs down.")
     comment: str | None = Field(
         default=None,
+        min_length=1,
         max_length=2000,
         description="Optional written feedback.",
     )

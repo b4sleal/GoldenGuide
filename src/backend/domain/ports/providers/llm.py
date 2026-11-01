@@ -3,30 +3,30 @@ from typing import AsyncIterator, Protocol
 
 from pydantic import BaseModel
 
+from backend.domain.entities.llm import LLMRequest
 from backend.domain.settings.profiles import LLMProfile
 
 
 class LLM(Protocol):
-    async def generate(self, prompt: str) -> str:
+    def generate_stream(self, request: LLMRequest) -> AsyncIterator[str]:
         ...
 
-    def generate_stream(self, prompt: str) -> AsyncIterator[str]:
-        ...
-
-    async def generate_structured[T: BaseModel = BaseModel](
+    async def generate_structured[T: BaseModel](
             self,
-            prompt: str,
-            response_model: type[T] = BaseModel,
+            request: LLMRequest,
+            response_model: type[T],
     ) -> T:
+        """Raise NotImplementedError if the provider has no structured output; the orchestrator falls back."""
         ...
+
 
 class LLMOrchestrator(Protocol):
-    async def generate(self, prompt: str, profile: LLMProfile): ...
-    def generate_stream(self, prompt: str, profile: LLMProfile)-> AsyncIterator[str]: ...
-    async def generate_structured[T: BaseModel = BaseModel](
+    def generate_stream(self, request: LLMRequest, profile: LLMProfile) -> AsyncIterator[str]: ...
+
+    async def generate_structured[T: BaseModel](
             self,
-            prompt: str,
+            request: LLMRequest,
             profile: LLMProfile,
-            response_model: type[T] = BaseModel,
+            response_model: type[T],
     ) -> T:
         ...

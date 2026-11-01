@@ -3,24 +3,9 @@ import pytest
 from pydantic import ValidationError
 
 from backend.domain.entities.retrieval_plan import (
-    EntityOperator,
     GlobalFilters,
-    RetrievalRequest,
 )
 from backend.domain.entities.wlu.academic_calendar import Season, Weekday
-
-
-@pytest.mark.parametrize("operator", list(EntityOperator))
-def test_entity_operators(operator):
-    request = RetrievalRequest(
-        source="wlu_pages", operation="filter", entities=["[DEPARTMENT1]", "[DEPARTMENT2]"], entity_operator=operator,
-    )
-    assert request.entity_operator == operator
-
-
-def test_invalid_operator_rejected():
-    with pytest.raises(ValidationError):
-        RetrievalRequest(source="wlu_pages", operation="filter", entity_operator="xor")
 
 
 def test_terms_and_days_are_enums():

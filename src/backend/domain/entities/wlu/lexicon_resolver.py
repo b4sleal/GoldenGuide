@@ -28,8 +28,9 @@ class WluLexiconResolver:
             LexiconEntityType.FACULTY: lexicon_profile.faculties,
             LexiconEntityType.REGISTRATION_NOTES: lexicon_profile.registration_notes,
         }
+        self._sections = {entity_type: sections.get(entity_type, {}) for entity_type in LexiconEntityType}
         self._alias_maps: dict[LexiconEntityType, dict[str, LexiconEntry]] = {
-            entity_type: self._alias_map(sections.get(entity_type, {})) for entity_type in LexiconEntityType
+            entity_type: self._alias_map(entries) for entity_type, entries in self._sections.items()
         }
 
     @staticmethod
@@ -46,6 +47,13 @@ class WluLexiconResolver:
 
     def get_aliases(self, entity_type: LexiconEntityType) -> list[str]:
         return list(self._alias_maps[entity_type])
+
+    def course_codes(self, entity_type: LexiconEntityType) -> frozenset[str]:
+        """The section's subject codes, casefolded like aliases ("it" for Italian's IT)."""
+        return frozenset(
+            lookup_key(entry.course_code)
+            for entry in self._sections[entity_type].values() if entry.course_code
+        )
 
     def get_entry(self, entity_type: LexiconEntityType, raw_value: str | None) -> LexiconEntry | None:
         if not raw_value:

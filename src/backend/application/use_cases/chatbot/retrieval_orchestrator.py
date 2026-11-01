@@ -15,20 +15,39 @@ import structlog
 
 from backend.application.services.chatbot.db_evidence_selector import DBEvidenceSelector
 from backend.application.services.chatbot.retrieval_router import RetrievalProfileRouter
+from backend.application.services.router.conversation_entities import entities_to_carry
+from backend.application.services.router.planning.llm.plan_validation import (
+    referenced_masks,
+)
+from backend.application.services.router.retrieval.structured_retriever import (
+    StructuredRetriever,
+)
 from backend.application.services.router.router import QueryRouter
-from backend.application.services.router.retrieval.structured_retriever import StructuredRetriever
 from backend.application.use_cases.chatbot.context_resolver import RAGContextResolver
-from backend.application.use_cases.chatbot.evidence_tables import build_tables, prompt_records, table_catalog_text
+from backend.application.use_cases.chatbot.evidence_tables import (
+    build_tables,
+    prompt_records,
+    table_catalog_text,
+)
 from backend.application.use_cases.chatbot.retrieval_limitations import (
     context_limit_note,
     limitation_notes,
     render_limitations,
     semantic_failure_note,
 )
-from backend.domain.entities.question import CourseEntity, DisciplineEntity, EntityMap, EntityType, ProgramEntity
-from backend.domain.entities.retrieval import Evidence, RetrievalOutcome, RetrievalStatus
-from backend.domain.settings.ai_behavior import ResolvedRAGContext
-from backend.domain.settings.profiles import DBEvidenceProfile
+from backend.application.use_cases.chatbot.turn_recorder import TurnRecorder
+from backend.domain.entities.question import (
+    CourseEntity,
+    DisciplineEntity,
+    EntityMap,
+    EntityType,
+    ProgramEntity,
+)
+from backend.domain.entities.retrieval import (
+    Evidence,
+    RetrievalOutcome,
+    RetrievalStatus,
+)
 from backend.domain.entities.retrieval_plan import (
     EvidenceRole,
     PreLLMExtraction,
@@ -36,6 +55,9 @@ from backend.domain.entities.retrieval_plan import (
     RetrievalRequest,
     RetrievalSource,
 )
+from backend.domain.entities.turn_status import TurnStage, TurnStatus
+from backend.domain.settings.ai_behavior import ResolvedRAGContext
+from backend.domain.settings.profiles import DBEvidenceProfile
 
 logger = structlog.get_logger(__name__)
 
@@ -267,20 +289,32 @@ class AcademicRetrievalOrchestrator:
 
         return semantic_requested
 
-    async def resolve_context(self, question: str, top_k: int = 8) -> ResolvedRAGContext:
-        """Build the full answer context for `question`, including any retrieval limitations."""
+    async def resolve_context(
+            self, question: str, recorder: TurnRecorder, earlier: EntityMap, top_k: int = 8,
+    ) -> ResolvedRAGContext:
+        """Build the full answer context for `question`, including any retrieval limitations.
+
+        Each stage is written to `recorder` as it finishes, so a failure keeps what ran before it.
+        `earlier` holds the entities the conversation carried forward, for follow-up questions.
+        """
         # Step 1: choose the retrieval profile and let the router plan the requests.
         # "Pre-LLM" stage: entity extraction plus the router LLM's plan.
         started = time.perf_counter()
         profile = self.retrieval_router.route_question(question)
-        extraction, raw_entities = await self.query_router.route(question)
-        entities = self._expand_entities(raw_entities)
+        extraction, raw_entities, carried = await self.query_router.route(question, earlier)
+        entities = self._expand_entities(raw_entities | carried)
         routing_ms = elapsed_ms(started)
+        recorder.query_plan = extraction
+        recorder.carried_entities = entities_to_carry(raw_entities, carried, referenced_masks(extraction))
+        recorder.timings["routing_ms"] = routing_ms
 
         # Step 2: remember which requests the student's question planned, then add automatic lookups.
         planned = list(extraction.retrieval.requests)
         planned_keys = {self._request_key(request) for request in planned}
+        # Automatic lookups only for this question's courses: earlier ones are used only when planned.
         requests = self._enrich_with_course_lookups(planned, raw_entities)
+        for request in requests:
+            recorder.report(TurnStatus(stage=TurnStage.SEARCHING, source=request.source))
 
         # Step 3: run the structured requests.
         evidence: dict[str, Evidence] = {}
@@ -288,23 +322,30 @@ class AcademicRetrievalOrchestrator:
         executed: set[str] = set()
         table_records: dict[str, bool] = {}
         started = time.perf_counter()
-        semantic = await self._execute(
-            requests=requests,
-            extraction=extraction,
-            entities=entities,
-            evidence=evidence,
-            outcomes=outcomes,
-            executed=executed,
-            db_evidence_profile=profile.db_evidence,
-            limit=_RECORDS_PER_REQUEST,
-            planned_keys=planned_keys,
-            table_records=table_records,
-        )
+        try:
+            semantic = await self._execute(
+                requests=requests,
+                extraction=extraction,
+                entities=entities,
+                evidence=evidence,
+                outcomes=outcomes,
+                executed=executed,
+                db_evidence_profile=profile.db_evidence,
+                limit=_RECORDS_PER_REQUEST,
+                planned_keys=planned_keys,
+                table_records=table_records,
+            )
+        finally:
+            # Outcomes of the requests that finished, even if a later one raised.
+            recorder.retrieval_outcomes = list(outcomes)
         structured_ms = elapsed_ms(started)
+        recorder.timings["structured_ms"] = structured_ms
 
         # Step 4: fall back to semantic search when the plan allows it and nothing structured was found.
         if extraction.retrieval.semantic_fallback and not evidence:
             semantic = True
+        if semantic:
+            recorder.report(TurnStatus(stage=TurnStage.SEARCHING, source=RetrievalSource.VECTOR))
 
         # Tables the answer can place with markers, built from the exact records (evidence_tables.py).
         # Evidence keeps retrieval order, so table rows follow the database's section ordering.
@@ -337,12 +378,16 @@ class AcademicRetrievalOrchestrator:
             factual=ordered,
             semantic_enabled=semantic,
         )
+        vector_search_ms = elapsed_ms(started) if semantic else None
+        recorder.timings["vector_search_ms"] = vector_search_ms
         logger.info(
             "retrieval_timings",
             routing_ms=routing_ms,          # Pre-LLM: entity extraction + router LLM plan.
             structured_ms=structured_ms,    # Postgres lookups.
-            vector_search_ms=elapsed_ms(started) if semantic else None,  # Embed, search, rerank, whole pages.
+            vector_search_ms=vector_search_ms,  # Embed, search, rerank, whole pages.
         )
+        recorder.profile_name = context.profile_name
+        recorder.sources = context.sources
 
         # Step 6: tell the answer model which parts of the question could not be answered,
         # so it says so instead of answering from unrelated records.

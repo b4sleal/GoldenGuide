@@ -8,7 +8,6 @@ from ipaddress import ip_network
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from starlette.staticfiles import StaticFiles
 
 from backend.api.docs import install_admin_docs
 from backend.api.errors import install_error_handlers
@@ -17,7 +16,9 @@ from backend.api.middleware.http_only import HttpOnlyMiddleware
 from backend.api.middleware.request_context import RequestContextMiddleware
 from backend.api.middleware.security_headers import SecurityHeadersMiddleware
 from backend.api.routes import router
+from backend.api.routes.chat import CONVERSATION_HEADER
 from backend.api.routes.identity import router as identity_router
+from backend.api.spa import FRONTEND_BUILD_DIR, SpaStaticFiles
 from goldenguide_common.config.secret_reader import SecretReader
 
 
@@ -73,7 +74,7 @@ def create_app(reader: SecretReader) -> FastAPI:
     # Bearer-key callers; none until factory.py attaches the configured ones, so bearer auth fails closed.
     app.state.service_clients = {}
     # Public chat limit per client IP; defaults keep the previous 10 requests / 60 s.
-    app.state.chat_rate_limit = positive_int_setting(reader, "CHAT_RATE_LIMIT", 10)
+    app.state.chat_rate_limit = positive_int_setting(reader, "CHAT_RATE_LIMIT", 20)
     app.state.chat_rate_window_seconds = positive_int_setting(reader, "CHAT_RATE_WINDOW_SECONDS", 60)
 
     # ---- Step 4: OIDC sign-in (only when enabled) ----
@@ -140,7 +141,7 @@ def create_app(reader: SecretReader) -> FastAPI:
         allow_methods=["GET", "POST", "PATCH", "DELETE"],
         allow_headers=["Authorization", "Content-Type"],
         # Let cross-origin frontends (e.g. an embedded widget) read the ID for bug reports.
-        expose_headers=["X-Request-ID"],
+        expose_headers=["X-Request-ID", CONVERSATION_HEADER],
     )
     # Outermost of all: turn away WebSocket handshakes before any HTTP-only component sees them.
     app.add_middleware(HttpOnlyMiddleware)
@@ -167,6 +168,6 @@ def create_app(reader: SecretReader) -> FastAPI:
 
     # ---- Step 9: static frontend (last, because "/" matches everything not matched above) ----
     if reader.get("SERVE_FRONTEND", "true").lower() == "true":
-        app.mount("/", StaticFiles(directory="src/frontend", html=True), name="frontend")
+        app.mount("/", SpaStaticFiles(FRONTEND_BUILD_DIR), name="frontend")
 
     return app

@@ -1,15 +1,19 @@
 """Translate application filter models into SQLAlchemy WHERE clauses."""
 from __future__ import annotations
 
-from sqlalchemy import Select
+from sqlalchemy import Delete, Select
 
 from backend.domain.ports.repositories.filters import (
+    ChatMessageFilter,
+    ConversationFilter,
     DocumentFilter,
     JobBatchFilter,
     JobRunFilter,
 )
 from backend.infra.persistence.db.app.app_tables import (
     AppDocumentTable,
+    ChatMessageTable,
+    ConversationTable,
     JobBatch,
     JobRun,
 )
@@ -69,5 +73,44 @@ class DocumentFilterTranslator:
 
         if filters.document_ids is not None:
             stmt = stmt.where(AppDocumentTable.document_id.in_(filters.document_ids))
+
+        return stmt
+
+
+class ConversationFilterTranslator:
+    @staticmethod
+    def apply[S: (Select, Delete)](stmt: S, filters: ConversationFilter | None) -> S:
+        if filters is None:
+            return stmt
+
+        if filters.id is not None:
+            stmt = stmt.where(ConversationTable.id == filters.id)
+
+        if filters.owner_subject is not None:
+            stmt = stmt.where(ConversationTable.owner_subject == filters.owner_subject)
+
+        if filters.client_id_hash is not None:
+            stmt = stmt.where(ConversationTable.client_id_hash == filters.client_id_hash)
+
+        if filters.updated_before is not None:
+            stmt = stmt.where(ConversationTable.updated_at < filters.updated_before)
+
+        return stmt
+
+
+class ChatMessageFilterTranslator:
+    @staticmethod
+    def apply(stmt: Select, filters: ChatMessageFilter | None) -> Select:
+        if filters is None:
+            return stmt
+
+        if filters.id is not None:
+            stmt = stmt.where(ChatMessageTable.id == filters.id)
+
+        if filters.conversation_id is not None:
+            stmt = stmt.where(ChatMessageTable.conversation_id == filters.conversation_id)
+
+        if filters.statuses is not None:
+            stmt = stmt.where(ChatMessageTable.status.in_([status.value for status in filters.statuses]))
 
         return stmt

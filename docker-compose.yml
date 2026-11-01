@@ -206,12 +206,12 @@ services:
   # Opt-in, for stacks split across machines; single-machine development never needs it.
   # This container is its own Tailscale device (<MACHINE_NAME>-docker) and forwards the ports in
   # deploy/tailscale/serve.json to services by name, so only tailnet devices can reach them
-  # (e.g. pc-docker.<tailnet>.ts.net:6333). Nothing is published on the host for this: published
+  # (e.g. data-node-docker.<tailnet>.ts.net:6333). Nothing is published on the host for this: published
   # ports stay on 127.0.0.1 for local use. Works the same on Docker Desktop and Linux.
   # A forwarded service that isn't running on this machine refuses the connection.
-  # Clients on other machines use that name, e.g. DB__POSTGRES__HOST=pc-docker.<tailnet>.ts.net.
+  # Clients on other machines use that name, e.g. DB__POSTGRES__HOST=data-node-docker.<tailnet>.ts.net.
   # Outgoing connections to other machines currently go through the host's Tailscale app
-  # (see docs/docker.md#separate-machines for the planned Docker-only gateway).
+  # (see docs/backend/docker.md#separate-machines for the planned Docker-only gateway).
   # Requires TS_AUTHKEY: a tagged key from the Tailscale admin console (Settings -> Keys).
   tailscale:
     <<: *container-limits
@@ -500,6 +500,7 @@ services:
     build:
       context: .
       dockerfile: docker/frontend/Dockerfile
+      target: runtime
     image: goldenguide-frontend:static
     profiles: [frontend, all, all-dev]
     restart: unless-stopped

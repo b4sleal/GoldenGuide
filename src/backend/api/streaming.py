@@ -2,6 +2,11 @@
 
 Wire format: one JSON object per line (application/x-ndjson). Event types:
 
+    {"type": "status", "stage": ..., "source": ...}
+                                             progress before the text (not terminal): stage is
+                                             understanding | searching | writing; source (searching
+                                             only) is courses | course_terms | wlu_pages | vector.
+                                             Clients map these codes to wording.
     {"type": "text", "text": ...}            answer text, in order
     {"type": "citation", ...}                inline citation markers
     {"type": "sources", "sources": [...]}    source list for the answer
@@ -13,9 +18,11 @@ ends with "error", show that message. If it ends with neither (connection droppe
 killed, proxy timeout), treat the answer as interrupted.
 
 Failure timing:
-    - Before the first event (retrieval, settings, LLM connect): normal HTTP error status + JSON
-      envelope, because we wait for the first event before starting the response.
+    - Before the first event: normal HTTP error status + JSON envelope, because we wait for the first
+      event before starting the response (e.g. 404 for another browser's conversation, 429).
     - After the first event: HTTP 200 has already been sent, so we emit an "error" event instead.
+      The chat's first event is the "understanding" status, sent at once so the student sees progress:
+      retrieval, settings and LLM failures therefore arrive as an "error" event.
 """
 import json
 from collections.abc import AsyncGenerator

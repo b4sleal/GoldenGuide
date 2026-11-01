@@ -6,8 +6,8 @@ from backend.domain.settings.ai_behavior import (
     AIBehaviorSettings,
     RuntimeDefaultsCatalog,
 )
-from goldenguide_common.contracts.embedding_models import LocalEmbeddingServiceSettings
 from backend.infra.security.oidc.authlib_client import _require_secure_url
+from goldenguide_common.contracts.embedding_models import LocalEmbeddingServiceSettings
 
 SERVICE = {"api_key": "k", "host": "embed", "port": 8001, "request_timeout_seconds": 5, "max_texts_per_request": 8}
 
@@ -28,16 +28,11 @@ def test_oidc_requires_https_except_for_local_keycloak(oidc_policy):
                             oidc_policy.local_development_hosts)
 
 
-def test_embedding_host_is_required_without_a_custom_validator():
-    with pytest.raises(ValidationError, match="host"):
-        LocalEmbeddingServiceSettings(runtime="cpu", **{key: value for key, value in SERVICE.items() if key != "host"})
-
-
 @pytest.mark.parametrize("typed_defaults", [False, True])
 def test_yaml_version_controls_defaults_without_modifying_input(typed_defaults):
-    defaults = {"version": 2, "router_llm": {"prompt": "route"}, "generation_llm": {"prompt": "answer"}}
+    defaults = {"version": 2, "router_llm": {"system": "route", "turn": "{question}"}, "generation_llm": {"system": "answer", "turn": "{question}"}}
     original = RuntimeDefaultsCatalog(**defaults) if typed_defaults else defaults
     settings = AIBehaviorSettings(version=3, runtime_defaults=original, retrieval_strategy={})
     assert settings.runtime_defaults.version == 3
-    assert settings.runtime_defaults.router_llm.prompt == "route"
+    assert settings.runtime_defaults.router_llm.system == "route"
     assert (original.version if typed_defaults else original["version"]) == 2

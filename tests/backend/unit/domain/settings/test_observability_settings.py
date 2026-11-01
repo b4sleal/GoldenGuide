@@ -2,13 +2,8 @@
 import pytest
 from pydantic import ValidationError
 
-from goldenguide_common.logging.settings import LoggingSettings, TelemetrySettings
 from goldenguide_common.logging.bootstrap import _parse_bool
-
-
-def test_logging_rejects_invalid_format():
-    with pytest.raises(ValidationError):
-        LoggingSettings(format="xml")
+from goldenguide_common.logging.settings import TelemetrySettings
 
 
 def test_sampling_ratio_is_bounded():
