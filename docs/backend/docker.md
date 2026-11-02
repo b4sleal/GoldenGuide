@@ -281,7 +281,7 @@ concurrency (`UV_CONCURRENT_*`) are bounded too. Logs rotate at 10 MiB × 3 file
 Not covered by container limits:
 
 - **Windows / WSL.** Docker Desktop, the WSL kernel and page cache share one WSL budget. Copy or merge
-  `wslconfig.example` into `%UserProfile%\.wslconfig` (4 CPUs, 8 GB, no swap, gradual memory
+  `wslconfig.example` into `%UserProfile%\.wslconfig` (6 CPUs, 12 GB, no swap, gradual memory
   reclaim), then `wsl --shutdown` and restart Docker Desktop. On backends with direct CPU/RAM
   settings, use Docker Desktop's Settings > Resources.
 - **Image builds.** `RUN` steps ignore service limits. Use a capped builder:

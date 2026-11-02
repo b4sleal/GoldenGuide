@@ -1,5 +1,6 @@
 """Qdrant adapter: collections with named vectors ("dense", "sparse", "colbert"), batched upserts,
-hybrid search fused with Reciprocal Rank Fusion, and filter-based deletes.
+hybrid search (dense + sparse fused with Reciprocal Rank Fusion, then reranked by ColBERT), and
+filter-based deletes.
 """
 from collections.abc import Mapping
 from datetime import datetime
@@ -41,6 +42,9 @@ UPSERT_SAFETY_FACTOR = 0.75
 UPSERT_REQUEST_OVERHEAD_BYTES = 1024
 # Reciprocal Rank Fusion constant: higher values flatten the advantage of top ranks.
 RRF_K = 60
+# ColBERT only reranks candidates found by dense/sparse search, so it needs no HNSW graph. Building
+# one over every token vector costs hours of optimizer CPU for nothing.
+RERANK_ONLY_HNSW = models.HnswConfigDiff(m=0)
 PAYLOAD_SCHEMA_TYPES = {
     PayloadIndexKind.KEYWORD: PayloadSchemaType.KEYWORD,
     PayloadIndexKind.DATETIME: PayloadSchemaType.DATETIME,
@@ -93,6 +97,7 @@ class QDrantStore:
                 multivector_config=models.MultiVectorConfig(
                     comparator=models.MultiVectorComparator.MAX_SIM
                 ),
+                hnsw_config=RERANK_ONLY_HNSW,
             )
 
         sparse_config = None
@@ -199,70 +204,59 @@ class QDrantStore:
 
         q_filter = self._build_filter(filters)
         prefetch_limit = max(limit * 5, 200)
-        prefetch_tasks = []
 
-        # 1. Queue the Dense search
+        # Candidates come from dense and sparse search. Each prefetch is filtered itself: the outer
+        # filter alone would only discard candidates picked from the whole collection.
+        candidates = []
         if dense_vector is not None:
-            prefetch_tasks.append(
+            candidates.append(
                 models.Prefetch(
                     query=dense_vector,
                     using="dense",
+                    filter=q_filter,
                     limit=prefetch_limit,
                 )
             )
-
-        # 2. Queue the Sparse search
         if sparse_vector is not None:
-            prefetch_tasks.append(
+            candidates.append(
                 models.Prefetch(
                     query=models.SparseVector(
                         indices=sparse_vector.indices,
-                        values=sparse_vector.values
+                        values=sparse_vector.values,
                     ),
                     using="sparse",
+                    filter=q_filter,
                     limit=prefetch_limit,
                 )
             )
+        rrf = models.RrfQuery(rrf=models.Rrf(k=RRF_K))
 
-        # 3. Queue the ColBERT search
         if multivector is not None:
-            prefetch_tasks.append(
-                models.Prefetch(
-                    # For Prefetch, pass the 2D list directly, 'using' tells Qdrant it's ColBERT
-                    query=multivector,
-                    using="colbert",
-                    limit=prefetch_limit,
-                )
-            )
-
-        if not prefetch_tasks:
+            # ColBERT reranks the (fused) candidates. Without candidates it scores every point,
+            # since its vectors have no HNSW index (RERANK_ONLY_HNSW).
+            query, using = multivector, "colbert"
+            if len(candidates) > 1:
+                prefetch = [models.Prefetch(prefetch=candidates, query=rrf, limit=prefetch_limit)]
+            else:
+                prefetch = candidates or None
+        elif len(candidates) == 1:
+            query, using, prefetch = candidates[0].query, candidates[0].using, None
+        elif candidates:
+            query, using, prefetch = rrf, None, candidates
+        else:
             raise ValueError("Search requires at least one vector type.")
 
-        # 4. If only ONE vector type was passed, just do a standard query
-        if len(prefetch_tasks) == 1:
-            results = await self.client.query_points(
-                collection_name=name,
-                query=prefetch_tasks[0].query,
-                using=prefetch_tasks[0].using,
-                limit=limit,
-                query_filter=q_filter,
-                score_threshold=score_threshold,
-                with_payload=True,
-                with_vectors=False,
-            )
-            return self._convert_results(results)
-
-        # 5. If MULTIPLE vectors were passed, fuse them with RRF
         results = await self.client.query_points(
             collection_name=name,
-            prefetch=prefetch_tasks,
-            query=models.RrfQuery(rrf=models.Rrf(k=RRF_K)),
+            prefetch=prefetch,
+            query=query,
+            using=using,
             limit=limit,
             query_filter=q_filter,
+            score_threshold=score_threshold,
             with_payload=True,
             with_vectors=False,
         )
-
         return self._convert_results(results)
 
     # --------------------------------------------------

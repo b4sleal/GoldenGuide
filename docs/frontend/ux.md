@@ -57,7 +57,8 @@ plan, sent once per source, never guessed from the question text.
   a citation names several; there are no `[1]` numbers. Hovering a chip (a click, tap or Enter on
   touch and keyboard) opens a card under it with each cited source's site, title and a two-line preview;
   it fits about two entries and scrolls the rest, stays open while the pointer moves into it, and
-  Escape closes it. Entries open the source in a new tab. Hovering the chip highlights nothing;
+  Escape closes it. Only one card is open at a time: opening another chip's card, even by hovering,
+  closes one that was pinned by a click. Entries open the source in a new tab. Hovering the chip highlights nothing;
   hovering a source in its card highlights the text the citation covers (since the previous citation,
   within the same paragraph or list item).
 - **Tables** of database records (sections, meetings, seats) render from data in a scrollable,
@@ -68,8 +69,10 @@ plan, sent once per source, never guessed from the question text.
   text). Chips never highlight entries in the row: one highlight at a time keeps the answer calm.
 - **Copy** puts editable Markdown (without citation chips), tab-separated table data and a plain list
   of source links on the clipboard.
-- **Feedback** (thumbs up/down, with a reason for thumbs down) is offered on answers loaded from
-  history; live answers do not yet know their stored message ID.
+- **Feedback** (thumbs up/down, with a reason for thumbs down) is offered on every completed answer,
+  as soon as the stream reports its stored message ID (`saved` event), and on answers loaded from
+  history. A live answer that failed or was cut off gets it after a reload. If history could not
+  be saved, the answer has no ID and only Copy is shown.
 
 ## Unfinished answers
 

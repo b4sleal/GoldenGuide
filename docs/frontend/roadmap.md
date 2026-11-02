@@ -23,8 +23,8 @@ choices in the log instead of deleting them.
    `CourseTerm` data; click a node to see that course. Term-aware: prerequisites can differ by offering.
 3. **Distinct outcome states.** "No records found", "not supported", "provider failed" and "retrieval
    incomplete" each look different, with their own wording and action. Never shown as "doesn't exist".
-4. **Feedback on live answers.** Return the stored assistant message ID in the stream (e.g. on `ok`)
-   so thumbs up/down work without reloading the conversation.
+4. **Feedback on live answers** (built 2026-11-02). A completed answer is stored before the stream
+   ends and a `saved` event (`message_id`) precedes `ok`, so thumbs up/down work without reloading.
 
 ## Likely (after the committed items)
 

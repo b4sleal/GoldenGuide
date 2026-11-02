@@ -10,7 +10,7 @@ from qdrant_client import models
 from backend.domain.common.providers_enum import VectorStoreProvider
 from backend.domain.settings.providers import QdrantSettings
 from backend.infra.persistence.vectors.app_vector_store import AppVectorStore
-from backend.infra.persistence.vectors.qdrant.store import QDrantStore
+from backend.infra.persistence.vectors.qdrant.store import QDrantStore, RERANK_ONLY_HNSW
 
 # Register each adapter's setup once. Parametrizing the enum makes an unregistered provider fail.
 VECTOR_STORE_FIXTURES = {VectorStoreProvider.QDRANT: "qdrant_store"}
@@ -59,8 +59,10 @@ async def qdrant_store(infra_service_url):
                     size=2,
                     distance=models.Distance.COSINE,
                     multivector_config=models.MultiVectorConfig(
-                        comparator=models.MultiVectorComparator.MAX_SIM
+                        comparator=models.MultiVectorComparator.MAX_SIM,
                     ),
+                    # Same as create_collection, so the multivector-only search scans every point.
+                    hnsw_config=RERANK_ONLY_HNSW,
                 ),
             },
             sparse_vectors_config={"sparse": models.SparseVectorParams()},

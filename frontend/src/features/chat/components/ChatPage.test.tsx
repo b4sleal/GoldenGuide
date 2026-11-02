@@ -171,6 +171,31 @@ describe("ChatPage", () => {
     if (status === "interrupted") expect(within(answer).getByText(/cut off before it finished/i)).toBeInTheDocument();
   });
 
+  it("offers feedback on a live answer once the server reports its stored ID", async () => {
+    const feedback: unknown[] = [];
+    server.use(
+      http.post(streamUrl, () => ndjsonResponse(
+        lines({ type: "text", text: "A completed answer" }, { type: "saved", message_id: 9 }, { type: "ok" }),
+        { conversationId: CONVERSATION },
+      )),
+      http.put("*/api/v1/chat/messages/9/feedback", async ({ request }) => {
+        feedback.push(await request.json());
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.type(await screen.findByLabelText(/ask about laurier/i), "Question{Enter}");
+    await screen.findByText("Answer ready.");
+    const answer = screen.getByRole("article", { name: /goldenguide answer/i });
+    await user.click(within(answer).getByRole("button", { name: "Good answer" }));
+
+    await screen.findByText("Thanks for the feedback.");
+    expect(feedback).toEqual([{ rating: "up" }]);
+    expect(within(answer).getByRole("button", { name: "Copy answer" })).toBeInTheDocument();
+  });
+
   it("explains a conversation that does not exist on this device", async () => {
     server.use(
       http.get(`*/api/v1/chat/conversations/${CONVERSATION}/messages`, () =>

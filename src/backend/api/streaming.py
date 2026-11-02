@@ -11,6 +11,9 @@ Wire format: one JSON object per line (application/x-ndjson). Event types:
     {"type": "citation", ...}                inline citation markers
     {"type": "sources", "sources": [...]}    source list for the answer: sent once, before the first
                                              text, so citations can show their sources while streaming
+    {"type": "saved", "message_id": ...}     the complete answer was stored under this ID (used to
+                                             rate it); sent just before "ok", omitted if history
+                                             could not be saved
     {"type": "error", "error": {...}}        terminal: generation failed; same envelope as HTTP errors
     {"type": "ok"}                           terminal: the answer is complete
 

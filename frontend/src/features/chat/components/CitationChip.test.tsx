@@ -107,6 +107,25 @@ describe("CitationChip", () => {
     await closed();
   });
 
+  it("closes a pinned card when another chip's card opens, so only one shows at a time", async () => {
+    const user = setup();
+    render(
+      <AnswerSourcesProvider sources={sources}>
+        <CitationChip numbers={[1]} segment="0-0" />
+        <CitationChip numbers={[2]} segment="0-1" />
+      </AnswerSourcesProvider>,
+    );
+    const [first, second] = screen.getAllByRole("button");
+
+    await user.click(first!);
+    expect(await openCard()).toHaveTextContent("PC/CP220: Digital Electronics");
+
+    await user.hover(second!);
+    await waitFor(() => expect(screen.getAllByRole("list", { name: "Cited sources" })).toHaveLength(1));
+    await waitFor(() => expect(card()).toHaveTextContent("Laurier Backgrounder"));
+    expect(card()).not.toHaveTextContent("PC/CP220: Digital Electronics");
+  });
+
   it("opens from the keyboard and lets Tab reach the source links", async () => {
     const user = setup();
     renderChip([1, 2]);

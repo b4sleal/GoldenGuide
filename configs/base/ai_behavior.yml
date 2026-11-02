@@ -180,6 +180,8 @@ ai_behavior:
         
         SOURCES AND CITATIONS:
         11. Cite factual claims using numeric references: [1], [2], etc.
+        Cite every fact taken from the context, even when there is only
+        one source.
         Use at most 3 citations per claim, selecting the most relevant
         sources that directly support it.
         
@@ -244,7 +246,9 @@ ai_behavior:
 
         CONTEXT:
         {context_text}
-        
+
+        Cite each fact with [n], where n is its SOURCE number above.
+
         USER QUESTION:
         {question}
         

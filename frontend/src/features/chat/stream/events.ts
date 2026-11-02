@@ -45,6 +45,8 @@ export const StreamEvent = z.discriminatedUnion("type", [
     rows: z.array(z.array(z.string())),
   }),
   z.object({ type: z.literal("sources"), sources: z.array(Source) }),
+  /** The complete answer was stored under this ID, so it can be rated. Absent if history is unavailable. */
+  z.object({ type: z.literal("saved"), message_id: z.number().int().positive() }),
   z.object({ type: z.literal("error"), error: ApiErrorBody }),
   z.object({ type: z.literal("ok") }),
 ]);

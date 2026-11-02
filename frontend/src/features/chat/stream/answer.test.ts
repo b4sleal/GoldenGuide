@@ -65,6 +65,13 @@ describe("answer", () => {
     ]);
   });
 
+  it("records the stored message ID so the answer can be rated", () => {
+    expect(pendingAnswer.messageId).toBeNull();
+    const answer = apply({ type: "text", text: "Hi" }, { type: "saved", message_id: 7 }, { type: "ok" });
+    expect(answer.messageId).toBe(7);
+    expect(answer.phase).toBe("complete");
+  });
+
   it("records sources", () => {
     const sources = [{ title: "CP264", url: "https://wlu.ca/cp264", source_type: "course" }];
     expect(apply({ type: "sources", sources }).sources).toEqual(sources);

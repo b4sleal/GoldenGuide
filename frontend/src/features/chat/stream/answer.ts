@@ -24,9 +24,18 @@ export interface Answer {
   blocks: AnswerBlock[];
   sources: Source[];
   error: ApiErrorBody | null;
+  /** The stored answer's ID (from the `saved` event), needed to rate it. */
+  messageId: number | null;
 }
 
-export const pendingAnswer: Answer = { phase: "pending", status: null, blocks: [], sources: [], error: null };
+export const pendingAnswer: Answer = {
+  phase: "pending",
+  status: null,
+  blocks: [],
+  sources: [],
+  error: null,
+  messageId: null,
+};
 
 export function isFinished(answer: Answer): boolean {
   return answer.phase !== "pending" && answer.phase !== "streaming";
@@ -52,6 +61,8 @@ export function applyEvent(answer: Answer, event: StreamEvent): Answer {
     }
     case "sources":
       return { ...answer, sources: event.sources };
+    case "saved":
+      return { ...answer, messageId: event.message_id };
     case "error":
       return { ...answer, phase: "error", error: event.error };
     case "ok":

@@ -133,7 +133,10 @@ nothing and the plan allows it (`services/chatbot/`, `use_cases/chatbot/context_
 
 1. **Embed** the question with every vector type the profile's collection has: dense (MiniLM),
    sparse (SPLADE) and multi-vector (ColBERT), via the embedding service.
-2. **Hybrid search** in Qdrant fuses the three similarities (top 60 for `deep_cloud`).
+2. **Hybrid search** in Qdrant finds candidates by dense and sparse similarity (fused with
+   Reciprocal Rank Fusion, each filtered), then ColBERT reorders those candidates by per-token
+   similarity (top 60 for `deep_cloud`). ColBERT never searches the whole collection, so its
+   vectors have no HNSW index (`hnsw_config.m = 0`), which keeps Qdrant's indexing cheap.
 3. **Cross-encoder rerank** (`reranking.py`) reads the question and each candidate together and
    keeps the best 20. Fused similarity finds candidates; the cross-encoder decides which actually
    answer the question (it can tell "important dates and deadlines" from a page that merely lists
@@ -165,6 +168,10 @@ semantic search fails entirely, the answer is told so (see below) instead of ans
   unrelated records. "No records found", "unsupported", "a provider failed" and "incomplete" stay
   distinct all the way to the student.
 - The answer prompt also receives today's date and the terms in scope, computed in code.
+- **Citations.** The prompt asks for `[n]` on every fact taken from the context, even with a single
+  source (rule 11), and repeats that right after the context (`turn` template in
+  `configs/base/ai_behavior.yml`). With only the system rule, single-source answers were sometimes
+  written with no citations, so no source chips appeared.
 
 ## 6. Generation and streaming
 
@@ -178,7 +185,8 @@ citations ([n] / [n, m] / [Source n] -> citation event) -> links (course codes -
 Each stage holds back partial markers across chunk boundaries and releases them in order. The
 browser receives newline-delimited JSON: `status` events (progress) and the `sources` list first
 (so citation chips can show their sources while the text streams), then `text`, `citation`, `table`,
-and a terminal `ok` or `error` added by `api/streaming.py`
+`saved` (the stored answer's ID, from `chat_turn.py`) and a terminal `ok` or `error` added by
+`api/streaming.py`
 ([stream contract](api.md#chat-stream-contract)).
 
 The prompt is an `LLMRequest` (`domain/entities/llm.py`): fixed `system` instructions plus
@@ -199,9 +207,10 @@ Every answer logs `retrieval_ms` (routing + structured + vector), `first_chunk_m
 Every turn is stored (`application/use_cases/chatbot/chat_turn.py`, app database tables
 `conversations`, `chat_messages`, `message_feedback`):
 
-- The question is saved **before** answering; the answer is saved in a `finally`, however the stream
-  ends: `complete`, `error` (with `error_type`, `error_code`, `error_message`) or `interrupted`
-  (student disconnected). The final save runs as a shielded task so a disconnect cannot cancel it.
+- The question is saved **before** answering. A `complete` answer is saved before the stream ends,
+  then a `saved` event gives the client its message ID, so the student can rate it at once. An
+  `error` (with `error_type`, `error_code`, `error_message`) or `interrupted` (student disconnected)
+  answer is saved in a `finally`. Either save runs as a shielded task so a disconnect cannot cancel it.
 - Assistant messages keep diagnostics for review: query plan, retrieval outcomes, sources, profile,
   settings version, per-stage timings, `trace_id`, `request_id`, and the carried entities (below).
   The `TurnRecorder` collects these stage by stage, so a failure keeps whatever ran before it.

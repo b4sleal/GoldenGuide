@@ -116,8 +116,8 @@
   \vfill
   \begin{tabular}{@{}ll@{}}
     \textbf{Author} & Basleal Abshiro (b4sleal) \\
-    \textbf{Version} & 1.4 \\
-    \textbf{Date} & November 1, 2026 \\
+    \textbf{Version} & 1.5 \\
+    \textbf{Date} & November 2, 2026 \\
     \textbf{Status} & Describes the implemented system \\
     \textbf{Repository} & \url{https://github.com/b4sleal/GoldenGuide} \\
     \textbf{Live system} & \url{https://askgoldenguide.ca} \\
@@ -137,6 +137,7 @@
 1.2 & 2026-10-30 & Basleal Abshiro & Staging and production run their own Keycloak with a hosted realm that seeds the first administrator; each environment has its own Compose project name and data volumes; the pre-release database migrations were folded into a single baseline; the API documentation's inline script is allowed by hash in the content security policy. \\
 1.3 & 2026-10-31 & Basleal Abshiro & Multiple machines over Tailscale: each machine's \texttt{tailscale} container is its own private device and forwards that machine's services by name, so a stack can be split by role (data node, application node) with one env file per machine; the \texttt{services} profile groups the shared data stores and Keycloak; env files choose their Compose files and profiles, so commands no longer repeat them; the backend waits for a healthy Keycloak; the IDE workspace is part of the development stack. \\
 1.4 & 2026-11-01 & Basleal Abshiro & React web client replaces the static page (new Web Client chapter and decision D13); stored conversations with follow-up memory, answer snapshots and feedback (tables \texttt{conversations}, \texttt{chat\_messages}, \texttt{message\_feedback}); conversation and feedback endpoints; \texttt{status} stream event; frontend tests; roadmap updated. \\
+1.5 & 2026-11-02 & Basleal Abshiro & ColBERT reorders the dense and sparse candidates instead of searching the whole collection, so its token vectors have no HNSW index (indexing took hours); search filters apply to every candidate search; completed answers are stored before the stream ends and a \texttt{saved} stream event gives the client their message ID, so every answer can be rated (risk R15 closed); the answer prompt repeats the citation rule after the context; the \texttt{sources} event is sent before the answer text. \\
 \bottomrule
 \end{tabularx}
 
@@ -450,14 +451,17 @@ a malformed or adversarial plan cannot trigger arbitrary queries.
 \end{decision}
 
 \begin{decision}{D4}{Hybrid vector search, cross-encoder reranking and whole-page expansion}
-\field{Decision} Dense (MiniLM), sparse (SPLADE) and multi-vector (ColBERT) retrieval fused in Qdrant,
-then a cross-encoder rerank, then whole pages when they fit the budget.\par
+\field{Decision} Dense (MiniLM) and sparse (SPLADE) candidates fused in Qdrant, reordered by
+multi-vector (ColBERT) similarity, then a cross-encoder rerank, then whole pages when they fit the
+budget.\par
 \field{Alternatives} Dense-only search; a hosted search service.\par
 \field{Rationale} Dense vectors capture meaning but miss exact terms (``OSAP'', course codes); sparse
 vectors catch terms; ColBERT adds token-level matching. A cross-encoder judges relevance rather than
 similarity. Whole pages fix ``list everything'' questions that chunking fragments. A retrieval
 evaluation measures each stage.\par
-\field{Consequences} A GPU is preferred; every stage is optional per retrieval profile.
+\field{Consequences} A GPU is preferred; every stage is optional per retrieval profile. ColBERT only
+scores candidates the other searches found, so its per-token vectors carry no HNSW index: building one
+cost hours of indexing for a search that never used it.
 \end{decision}
 
 \begin{decision}{D5}{A separate embedding service}
@@ -923,8 +927,8 @@ Reranker & \code{cross-encoder/ms-marco-MiniLM-L-6-v2} & sentence-transformers c
 \section{Retrieval profile}
 A retrieval profile bundles the vector collection, search strategy, structured-evidence budget and
 answer LLM, and may name fallback profiles that semantic search tries if it fails. Every question
-currently uses \texttt{deep\_cloud} (\texttt{multi\_sparse} collection, hybrid + ColBERT search of 60
-candidates, rerank to 20, whole pages up to 30{,}000 tokens). Its answer LLM is Gemini, and semantic
+currently uses \texttt{deep\_cloud} (\texttt{multi\_sparse} collection, hybrid search reordered by ColBERT
+to 60 candidates, rerank to 20, whole pages up to 30{,}000 tokens). Its answer LLM is Gemini, and semantic
 search falls back to \texttt{balanced\_cloud}. The settings also accept fallback answer models, but none
 are configured.
 
@@ -982,21 +986,23 @@ credit, level, days, rooms, instructors). LLM output enters the domain in one pl
 \section{Semantic path}
 Runs when the plan requests it, or as a fallback when the structured path found nothing and the plan
 allows it: embed the question with every vector type of the profile's collection, run hybrid search
-in Qdrant, rerank with the cross-encoder, drop duplicate chunks, and replace chunks with whole pages
+in Qdrant (dense and sparse candidates, each filtered, fused with Reciprocal Rank Fusion, then
+reordered by ColBERT), rerank with the cross-encoder, drop duplicate chunks, and replace chunks with whole pages
 when the reranked pages fit the budget together. A failing provider moves to the next profile in the
 profile's fallback list; if semantic search fails entirely, the answer is told so.
 
 \section{Context assembly and generation}
 \begin{itemize}
   \item Structured evidence first, then semantic results; each source is one numbered block with one
-        citation entry.
+        citation entry. The prompt asks for a \texttt{[n]} citation on every fact, even with a single
+        source, and repeats it right after the context.
   \item URLs are replaced by short placeholders that the model copies back and the stream restores, so
         the model never retypes or invents a link.
   \item Every request has an outcome --- completed (with count and truncation), unsupported or failed ---
         and the context tells the answer model which parts could not be answered and why.
   \item Today's date and the terms in scope are computed in code and given to the prompt.
   \item The answer is streamed through a chain applied to every chunk: citations
-        (\texttt{[Source n]} $\rightarrow$ citation event) $\rightarrow$ links (placeholder $\rightarrow$ URL)
+        (\texttt{[n]}, \texttt{[n, m]} or \texttt{[Source n]} $\rightarrow$ citation event) $\rightarrow$ links (placeholder $\rightarrow$ URL)
         $\rightarrow$ tables (marker $\rightarrow$ table event). Each stage holds back partial markers across
         chunk boundaries and releases them in order.
 \end{itemize}
@@ -1019,7 +1025,9 @@ Truncated & Retrieval hit a limit & Results are partial; more exist \\
 \section{Conversations and follow-up questions}
 \begin{itemize}
   \item Every turn is stored: the question before answering, the answer however the stream ends
-        (complete, error or interrupted), in a shielded final save that a disconnect cannot cancel.
+        (complete, error or interrupted), in a shielded save that a disconnect cannot cancel. A
+        complete answer is saved before the stream ends and its message ID is sent in a
+        \texttt{saved} event, so the student can rate it at once.
         Assistant messages keep diagnostics: query plan, retrieval outcomes, sources, profile,
         settings version, timings, \texttt{trace\_id} and \texttt{request\_id}.
   \item Storing history is best-effort: if it fails the answer still streams and the failure is logged.
@@ -1067,7 +1075,8 @@ Tests & Vitest, Testing Library, Mock Service Worker, Playwright \\
         complete (last event \texttt{ok}), error, interrupted (no terminal event) and stopped (the
         student pressed Stop). Partial text is kept but always marked incomplete.
   \item Tables are rendered from \texttt{table} event data, never through Markdown, so scraped
-        characters cannot change their structure. Citations become numbered links to their sources.
+        characters cannot change their structure. Citations become inline source chips with a preview
+        card (site, title, snippet).
 \end{itemize}
 
 \section{Conversations in the client}
@@ -1078,6 +1087,8 @@ Tests & Vitest, Testing Library, Mock Service Worker, Playwright \\
         renderers as live answers; older messages fall back to their text.
   \item Status events carry codes only; the client owns all student-facing wording, including the
         name of the source being searched (``Searching LORIS registration\ldots'').
+  \item Every completed answer offers thumbs up/down (with a reason for thumbs down) as soon as the
+        \texttt{saved} event gives its message ID; stored answers offer it too.
 \end{itemize}
 
 \section{Serving}
@@ -1302,7 +1313,8 @@ All routes are under \texttt{/api/v1}; administrators can browse OpenAPI documen
 \texttt{\{"type": "text", "text": ...\}} & Answer text, in order \\
 \texttt{\{"type": "citation", ...\}} & Citation marker with source numbers and URLs \\
 \texttt{\{"type": "table", ...\}} & Table of database records, with title, columns and rows \\
-\texttt{\{"type": "sources", ...\}} & Source list; always the last content event \\
+\texttt{\{"type": "sources", ...\}} & Source list (title, URL, type, preview), sent once before the answer text so citations can show their sources while streaming \\
+\texttt{\{"type": "saved", "message\_id": ...\}} & The complete answer was stored under this ID (used to rate it); just before \texttt{ok}, omitted if history could not be saved \\
 \texttt{\{"type": "ok"\}} & Terminal: the answer is complete \\
 \texttt{\{"type": "error", ...\}} & Terminal: failed after the stream started; same envelope as HTTP errors \\
 \bottomrule
@@ -1348,7 +1360,7 @@ An answer is complete only if the last event is \texttt{ok}; a stream ending wit
   \draw[msg] (2,-13.6) -- node[mlabel]{rerank} (6,-13.6);
   \draw[msg] (2,-14.7) -- node[mlabel]{prompt: sources, tables, limitations} (8,-14.7);
   \draw[ret] (8,-15.6) -- node[mlabel]{streamed text} (2,-15.6);
-  \draw[ret] (2,-16.5) -- node[mlabel]{status, text, citation, table, sources, ok} (0,-16.5);
+  \draw[ret] (2,-16.5) -- node[mlabel]{status, sources, text, citation, table, saved, ok} (0,-16.5);
   \node[font=\scriptsize,color=lineGrey,anchor=west] at (6.1,-12.7) {};
   \node[draw=lauGold,dashed,fit={(5.6,-11.3) (7.4,-14.0)},inner sep=1pt,
         label={[font=\scriptsize,color=lauGold!70!black]right:optional}] {};
@@ -1567,7 +1579,6 @@ R11 & Local administrator relies on loopback-bound ports & Exposure if ports are
 R12 & Staging does not enforce the production-only startup checks & Staging could run with an HTTP origin or \texttt{LOCAL\_ADMIN} that production would refuse & Apply the checks to staging as well; the staging template sets safe values \\
 R13 & Staging and production Keycloak run in development mode with its built-in database & Limited durability and hardening of the identity provider & Suitable for a small team; move to production mode with PostgreSQL and backups, or to WLU's Entra ID \\
 R14 & Conversations are kept with no retention period & Student data accumulates & Add a retention job; deleting a conversation is already available \\
-R15 & Live answers do not know their stored message ID & Feedback only on answers reloaded from history & Return the message ID in the stream \\
 \bottomrule
 \end{longtable}
 
@@ -1584,7 +1595,7 @@ R15 & Live answers do not know their stored message ID & Feedback only on answer
         Kubernetes for autoscaling and GPU scheduling. Both need Linux hosts and an image registry.
   \item Readiness endpoint and a durable job worker.
   \item Web client: an evidence panel showing the cited page and excerpt, a term-aware prerequisite
-        graph, distinct screens for each retrieval outcome, and feedback on live answers.
+        graph, and distinct screens for each retrieval outcome.
   \item Import-linter contracts and broader evaluation coverage in CI.
 \end{enumerate}
 

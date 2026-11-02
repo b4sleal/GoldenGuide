@@ -136,13 +136,15 @@ def parse_calendar_batch(
         additional = parse_additional_course_information(html_text, page.url, external_links)
 
         # Extract the RAW text first to use for logging
-        raw_faculty, raw_departments, _ = parse_breadcrumbs(html_text)
+        # The last crumb is the page itself; on a faculty's own page it is the only crumb.
+        raw_faculty, raw_departments, raw_current = parse_breadcrumbs(html_text)
 
         # Then resolve them for the database
         faculty = lexicon_resolver.resolve_faculty(raw_faculty)
         departments = [lexicon_resolver.resolve_subject(d) or "" for d in raw_departments]
 
-        record_type = classify_calendar_url(page.url, faculty, departments, lexicon_profile)
+        is_faculty_crumb = not raw_departments and raw_current == raw_faculty
+        record_type = classify_calendar_url(page.url, faculty, departments, is_faculty_crumb, lexicon_profile)
 
         if not title.strip() or not page_text.strip():
             logger.warning(

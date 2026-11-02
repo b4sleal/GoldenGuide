@@ -70,7 +70,7 @@ frontend/
         AnswerSourcesProvider     one answer's sources and its single highlight (card entry -> text,
                                   bottom-list source -> chips), shared by chips, card and list
         SourceList, SourceCarousel  sources in a scrollable row (touch, drag, keys); hover lights cited chips
-        AnswerActions, Feedback   copy answer; thumbs up/down (stored answers only)
+        AnswerActions, Feedback   copy answer; thumbs up/down (needs the stored message ID)
         Notice, HistorySidebar    outcome notices; conversation list with two-click delete
     test/                         Vitest setup, MSW server and stream helpers
 ```
@@ -170,7 +170,7 @@ The runtime proxy retains its stricter policy and immutable caching for built as
 | `components/AnswerActions.test.tsx` | copy on live answers, denied clipboard + retry, Copy beside feedback, no Copy when empty |
 | `components/EvidenceTable.test.tsx` | database values and line breaks preserved; labelled, focusable table viewports (data and Markdown tables) |
 | `components/SourceList.test.tsx` | backend order kept (unnumbered), no frontend merging, nav controls only on overflow, mouse drag vs click, touch left to browser |
-| `components/CitationChip.test.tsx` | chip label and "+N", hover delay, card stays open into the card, hover keeps focus, click/tap pin, keyboard, Escape, scrolling card (real timers) |
+| `components/CitationChip.test.tsx` | chip label and "+N", hover delay, card stays open into the card, hover keeps focus, click/tap pin, one card at a time (hover closes a pinned card), keyboard, Escape, scrolling card (real timers) |
 | `components/Markdown.test.tsx` | chips instead of `[n]`; chip hover lights nothing; card entry lights its segment (bold label, list items); bottom-list source lights only chips; ordinary links |
 | `components/rehypeCitationSegments.test.ts` | segment boundaries: previous citation, block edges, adjacent citations, whitespace |
 | `clipboard.test.ts` | ordered prose, table values and a plain source list; no citation markup; empty answers |
@@ -182,8 +182,6 @@ The runtime proxy retains its stricter policy and immutable caching for built as
 
 ## Known gaps
 
-- The stream does not return the stored assistant message ID, so feedback is only available on
-  answers loaded from history.
 - Bundle is ~684 kB (213 kB gzip) in one chunk.
 - `node:24-alpine` build image is not pinned by digest (the Nginx image is).
 

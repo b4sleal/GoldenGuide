@@ -1,4 +1,6 @@
 """One stored chat turn: the question is saved before answering, the answer however the stream ends.
+A complete answer is saved before the stream finishes and announced with a "saved" event carrying its
+message ID, so the student can rate it straight away.
 
 Continuing a conversation sends its last completed question/answer pairs to the answer model, so
 follow-up questions make sense. Earlier answers are context for meaning only: retrieval runs again
@@ -8,6 +10,7 @@ History is diagnostic, not critical: if loading or saving it fails, the student 
 and the failure is logged once. An unknown or foreign conversation is still refused (NotFoundError).
 """
 import asyncio
+import json
 from collections.abc import AsyncGenerator
 from itertools import pairwise
 from uuid import UUID
@@ -151,24 +154,39 @@ class ChatTurn:
             status, error = MessageStatus.ERROR, exc
             raise
         finally:
-            if conversation_id is not None:
+            if conversation_id is not None and status is not MessageStatus.COMPLETE:
                 await self._save_answer(recorder.answer_message(conversation_id, context, status, error))
 
-    async def _save_answer(self, message: ChatMessageCreate) -> None:
+        # A complete answer is saved before the stream ends, so the client learns its ID and can rate it.
+        if conversation_id is not None:
+            saved = await self._save_answer(
+                recorder.answer_message(conversation_id, context, MessageStatus.COMPLETE, None)
+            )
+            if saved is not None:
+                yield _saved_line(saved.id)
+
+    async def _save_answer(self, message: ChatMessageCreate) -> ChatMessageRead | None:
         # A disconnect cancels the stream, and an await in its finally block would be cancelled too.
         # The save runs as its own task: shielded from that cancellation, it completes regardless.
         task = asyncio.create_task(self._append_answer(message))
         self._saving.add(task)
         task.add_done_callback(self._saving.discard)
         # If cancelled while waiting, the cancellation still propagates; only the save is protected.
-        await asyncio.shield(task)
+        return await asyncio.shield(task)
 
-    async def _append_answer(self, message: ChatMessageCreate) -> None:
+    async def _append_answer(self, message: ChatMessageCreate) -> ChatMessageRead | None:
+        """The stored answer, or None if history is unavailable (logged here)."""
         try:
             async with self.app_db.start() as repos:
-                await repos.conversations.append_message(message)
+                return await repos.conversations.append_message(message)
         except Exception as exc:
             logger.error(
                 "chat_history_save_failed", stage="answer", status=message.status,
                 error_type=type(exc).__name__, exc_info=exc,
             )
+            return None
+
+
+def _saved_line(message_id: int) -> str:
+    """The stream event naming the stored answer, so the client can attach feedback to it."""
+    return json.dumps({"type": "saved", "message_id": message_id}) + "\n"

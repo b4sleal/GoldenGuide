@@ -49,6 +49,7 @@ class Conversations:
     async def append_message(self, payload):
         self._check()
         self.messages.append(payload)
+        return SimpleNamespace(id=len(self.messages))
 
     async def fetch_messages(self, page_params, filters, *, view_model):
         self._check()
@@ -106,7 +107,8 @@ async def test_completed_turn_stores_question_then_answer_with_diagnostics():
     conversation_id, lines = await run(chat_turn(Chatbot(), conversations))
 
     question, answer = conversations.messages
-    assert lines == ["CP264 ", "is offered."]
+    # The stored answer's ID follows the text, so the student can rate it without reloading.
+    assert lines == ["CP264 ", "is offered.", '{"type": "saved", "message_id": 2}\n']
     assert conversations.owners == {conversation_id: "device"}
     assert (question.role, question.content) == (MessageRole.USER, "Is CP264 offered in winter?")
     assert (answer.role, answer.status, answer.content) == (MessageRole.ASSISTANT, MessageStatus.COMPLETE, "CP264 is offered.")
@@ -160,6 +162,18 @@ async def test_history_outage_never_breaks_the_answer():
     conversation_id, lines = await run(turn)
 
     assert conversation_id is None
+    assert lines == ["CP264 ", "is offered."]  # Nothing stored, so no ID to rate.
+
+
+async def test_answer_save_failure_still_completes_the_stream_without_an_id():
+    conversations = Conversations()
+    turn = chat_turn(Chatbot(), conversations)
+    conversation_id, answer = await turn.start("Is CP264 offered in winter?", DEVICE)
+    conversations.fail = True  # The question was saved; the answer save fails.
+
+    lines = [line async for line in answer]
+
+    assert conversation_id is not None
     assert lines == ["CP264 ", "is offered."]
 
 

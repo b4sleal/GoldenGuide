@@ -11,6 +11,9 @@ import { SourceCard } from "./SourceCard";
 export const HOVER_OPEN_DELAY_MS = 150;
 export const HOVER_CLOSE_DELAY_MS = 200;
 
+/** The chip whose card is open. One card at a time: opening another (even by hover) closes a pinned one. */
+let openChip: { owner: object; close: () => void } | null = null;
+
 /**
  * An inline citation: the first source's title (and "+N" for more) as a chip. Hover shows a card with
  * every cited source; click, tap or Enter pins it open, since touch and keyboards cannot hover.
@@ -26,20 +29,34 @@ export function CitationChip({ numbers, segment }: { numbers: readonly number[];
   const titles = cited.map(({ number, source }) => source?.title ?? sourceNumberLabel(number));
   const lit = isChipHighlighted(highlight, numbers);
 
+  // Identifies this chip in `openChip`.
+  const [owner] = useState(() => ({}));
+
   const cancelTimer = () => clearTimeout(timer.current);
-  useEffect(() => () => clearTimeout(timer.current), []);
 
   const close = useCallback(() => {
     clearTimeout(timer.current);
     pinned.current = false;
     setOpen(false);
     clearHighlight();
-  }, [clearHighlight]);
+    if (openChip?.owner === owner) openChip = null;
+  }, [clearHighlight, owner]);
+
+  useEffect(() => () => {
+    clearTimeout(timer.current);
+    if (openChip?.owner === owner) openChip = null;
+  }, [owner]);
+
+  function show() {
+    if (openChip && openChip.owner !== owner) openChip.close();
+    openChip = { owner, close };
+    setOpen(true);
+  }
 
   function enter(event: PointerEvent) {
     if (event.pointerType !== "mouse") return;
     cancelTimer();
-    timer.current = setTimeout(() => setOpen(true), HOVER_OPEN_DELAY_MS);
+    timer.current = setTimeout(show, HOVER_OPEN_DELAY_MS);
   }
 
   function leave(event: PointerEvent) {
@@ -58,11 +75,11 @@ export function CitationChip({ numbers, segment }: { numbers: readonly number[];
       return;
     }
     pinned.current = true;
-    setOpen(true);
+    show();
   }
 
   return (
-    <Popover.Root open={open} onOpenChange={(next) => (next ? setOpen(true) : close())}>
+    <Popover.Root open={open} onOpenChange={(next) => (next ? show() : close())}>
       <Popover.Trigger asChild>
         <button
           type="button"

@@ -77,8 +77,8 @@ name a vendor.
 | `fast_local` | `dense` | Dense only | None |
 | `balanced_local` | `sparse` | Hybrid (dense + sparse) | `fast_local` |
 | `fast_cloud` | `sparse` | Hybrid, balanced depth | `balanced_local` |
-| `balanced_cloud` | `multi` | ColBERT, deep | `fast_cloud` |
-| `deep_cloud` (current default) | `multi_sparse` | Hybrid + ColBERT, rerank, whole pages | `balanced_cloud` |
+| `balanced_cloud` | `multi` | Dense, reordered by ColBERT, deep | `fast_cloud` |
+| `deep_cloud` (current default) | `multi_sparse` | Hybrid, reordered by ColBERT, rerank, whole pages | `balanced_cloud` |
 
 Each profile combines a vector collection layout, a retrieval strategy, a database evidence budget
 and an answer LLM. If semantic search fails on the chosen profile, the profile's fallback profiles

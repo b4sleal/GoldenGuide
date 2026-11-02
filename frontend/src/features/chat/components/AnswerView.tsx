@@ -63,7 +63,9 @@ export function AnswerView({ answer, onRetry }: { answer: Answer; onRetry?: () =
         </p>
 
         {answer.phase !== "stopped" && <SourceList sources={answer.sources} />}
-        {!running && <AnswerActions blocks={answer.blocks} sources={answer.sources} />}
+        {!running && (
+          <AnswerActions blocks={answer.blocks} sources={answer.sources} messageId={answer.messageId ?? undefined} />
+        )}
       </div>
     </AnswerSourcesProvider>
   );

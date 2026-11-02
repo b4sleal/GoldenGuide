@@ -87,6 +87,7 @@ curl -N -H 'Content-Type: application/json' -d '{"query":"When is the last day t
 | `{"type": "citation", ...}` | Inline citation marker pointing at a source |
 | `{"type": "table", ...}` | A table built from database records (e.g. LORIS sections), at the position the answer placed it |
 | `{"type": "sources", "sources": [...]}` | The source list for the answer (title, URL, type, preview), sent once, before the first `text`, so inline citations can show their sources while the text streams |
+| `{"type": "saved", "message_id": 42}` | The complete answer was stored under this ID; use it for `PUT /chat/messages/{id}/feedback`. Sent just before `ok`; omitted if history could not be saved (the answer is still complete) |
 | `{"type": "ok"}` | **Terminal**: the answer is complete |
 | `{"type": "error", "error": {...}}` | **Terminal**: generation failed after the stream started; same envelope as HTTP errors |
 

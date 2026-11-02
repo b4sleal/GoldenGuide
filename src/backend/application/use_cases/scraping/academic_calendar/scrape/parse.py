@@ -18,17 +18,18 @@ from backend.application.use_cases.scraping.common_parsing import (
 # URL CLASSIFICATION
 # -------------------------
 
-def classify_calendar_url(url: str, faculty: str | None, departments: list[str], lexicon_profile: WluLexicon) -> AcademicCalendarType:
-    """Determines the record type based strictly on the URL path and title validation."""
+def classify_calendar_url(
+        url: str, faculty: str | None, departments: list[str], is_faculty_crumb: bool, lexicon_profile: WluLexicon,
+) -> AcademicCalendarType:
+    """Record type from the URL path; only the remaining (section) pages are checked against the lexicon.
+
+    Typed URLs come first, so neither a lexicon entry nor a department named like its faculty (Martin
+    Luther University College) can turn a course, program or department into a faculty.
+    `is_faculty_crumb`: the page's own breadcrumb entry is its faculty (the trail is only the faculty).
+    Faculty sub-pages also have no crumbs between the faculty and themselves, so "no departments"
+    alone does not make a faculty page.
+    """
     path = urlparse(url).path.lower()
-    faculty_names = { e.canonical.lower() for e in lexicon_profile.faculties.values() }
-
-    if not departments and faculty and faculty.strip().lower() in faculty_names:
-        return AcademicCalendarType.FACULTY
-
-    if departments and departments[-1].strip().lower() in faculty_names:
-        return AcademicCalendarType.FACULTY
-
     if path.endswith("/department.php"):
         return AcademicCalendarType.DEPARTMENT
     if path.endswith("/program.php"):
@@ -37,6 +38,13 @@ def classify_calendar_url(url: str, faculty: str | None, departments: list[str],
         return AcademicCalendarType.COURSE
     if path.endswith("/glossary.php"):
         return AcademicCalendarType.GLOSSARY
+
+    faculty_names = { e.canonical.lower() for e in lexicon_profile.faculties.values() }
+    if is_faculty_crumb and faculty and faculty.strip().lower() in faculty_names:
+        return AcademicCalendarType.FACULTY
+
+    if departments and departments[-1].strip().lower() in faculty_names:
+        return AcademicCalendarType.FACULTY
 
     return AcademicCalendarType.PAGE
 

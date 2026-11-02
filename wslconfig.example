@@ -1,7 +1,7 @@
 # Applies to every WSL 2 distribution, not just GoldenGuide. Restart WSL to apply new changes.
 [wsl2]
-processors=4
-memory=8GB
+processors=6
+memory=12GB
 swap=0
 
 [experimental]
