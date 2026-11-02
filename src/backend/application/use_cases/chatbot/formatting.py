@@ -1,17 +1,22 @@
-"""Turn [Source n] citations in the streamed answer into citation events, across chunk boundaries."""
+"""Turn citations in the streamed answer into citation events, across chunk boundaries.
+
+Both `[1]` / `[1, 2]` (what the prompt asks for) and `[Source 1]` are accepted, so a prompt edited
+at runtime cannot silently stop citations from being recognized. Numbers outside the answer's
+sources (e.g. a bracketed year) stay text.
+"""
 import re
 
 from backend.domain.settings.ai_behavior import RAGSource
 
 
 CITATION_PATTERN = re.compile(
-    r"\[Source\s+(\d+(?:\s*,\s*\d+)*)\s*\]",
+    r"\[(?:Source\s+)?(\d+(?:\s*,\s*\d+)*)\s*\]",
     re.IGNORECASE,
 )
 
 POSSIBLE_CITATION = re.compile(
     r"\[(?:S(?:o(?:u(?:r(?:c(?:e)?)?)?)?)?)?"
-    r"(?:\s+\d[\d,\s]*)?\Z",
+    r"(?:\s*\d[\d,\s]*)?\Z",
     re.IGNORECASE,
 )
 

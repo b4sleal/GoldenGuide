@@ -6,6 +6,7 @@ from backend.application.use_cases.scraping.websites.scrape.persistence import W
 from backend.domain.entities.jobs import JobBatchParams, JobMode
 from backend.domain.entities.scraping import UNVERSIONED, ScrapePageRead, ScrapeStatus
 from backend.domain.entities.wlu.wlu_pages import AcademicCalendarType
+from tests.backend.unit.application.inline_compute import InlineCompute
 from tests.backend.unit.application.use_cases.scraping.websites.factories import WLU
 
 
@@ -56,7 +57,10 @@ EMPTY = b"<title>Placeholder</title><main>  </main>"  # A title but no body text
 
 async def test_parsed_pages_are_stored_and_only_they_are_marked_persisted():
     recorder = Recorder()
-    service = WebsitePersistenceService(FakeSchoolDB(recorder), FakeBlobs({"a": GOOD, "b": NO_MAIN, "c": EMPTY}))
+    compute = InlineCompute()
+    service = WebsitePersistenceService(
+        FakeSchoolDB(recorder), FakeBlobs({"a": GOOD, "b": NO_MAIN, "c": EMPTY}), compute,
+    )
     pages = [scrape_page(1, "a"), scrape_page(2, "b"), scrape_page(3, "c"), scrape_page(4, None), scrape_page(5, "gone")]
 
     summary = await service.execute(pages, WLU)
@@ -71,11 +75,13 @@ async def test_parsed_pages_are_stored_and_only_they_are_marked_persisted():
     [(ids, update)] = recorder.updated
     assert ids == [1] and update.needs_persistence is False
     assert summary == {"pages_seen": 5, "pages_with_blob": 3, "skipped_pages": 4, "wlu_pages": 1}
+    # The whole batch is parsed in one call off the event loop; I/O stays on it.
+    assert compute.calls == ["parse_website_batch"]
 
 
 async def test_nothing_parsed_writes_nothing():
     recorder = Recorder()
-    service = WebsitePersistenceService(FakeSchoolDB(recorder), FakeBlobs({"b": NO_MAIN}))
+    service = WebsitePersistenceService(FakeSchoolDB(recorder), FakeBlobs({"b": NO_MAIN}), InlineCompute())
 
     await service.execute([scrape_page(2, "b")], WLU)
 

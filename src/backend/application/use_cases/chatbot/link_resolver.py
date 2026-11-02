@@ -1,45 +1,49 @@
 """Keep URLs out of the model's context and put them back in the streamed answer.
 
-Course codes get links to their Academic Calendar page; @@n@@ placeholders become the URLs
-registered for this request. Text that may be an unfinished link or code is held until the next chunk.
+The context holds plain course codes, never Markdown links; each code with a known Academic Calendar
+page becomes a link in the answer. Text that may be an unfinished link or code is held until the next
+chunk.
 """
 import re
 from collections.abc import Iterable
 from urllib.parse import urlparse
 
+# A WLU course code: 2-4 subject letters, 3 digits, an optional suffix (CP164, GENG135, BU111A).
+COURSE_CODE_PATTERN = r"[A-Z]{2,4}\d{3}[A-Z]?"
+
 
 class ChatbotLinkResolver:
     COURSE_LINK = re.compile(
-        r"\[([A-Z]{2}\d{3}[A-Z]?)\]\((https?://[^)\s]+)\)",
+        rf"\[({COURSE_CODE_PATTERN})\]\((https?://[^)\s]+)\)",
         re.IGNORECASE,
     )
     SOURCE_COURSE = re.compile(
-        r"^([A-Z]{2}\d{3}[A-Z]?)\b",
+        rf"^({COURSE_CODE_PATTERN})\b",
         re.IGNORECASE,
     )
 
     # Match complete Markdown links before matching individual course codes.
     OUTPUT_TOKEN = re.compile(
         r"(?P<link>\[[^\]\n]*\]\s*\\?\([^)\n]*\))"
-        r"|(?P<bracket>\[(?P<bracket_code>[A-Z]{2}\d{3}[A-Z]?)\])"
-        r"|(?P<inline>`(?P<inline_code>[A-Z]{2}\d{3}[A-Z]?)`)"
-        r"|(?P<code>(?<![A-Z0-9])[A-Z]{2}\d{3}[A-Z]?(?![A-Z0-9]))",
+        rf"|(?P<bracket>\[(?P<bracket_code>{COURSE_CODE_PATTERN})\])"
+        rf"|(?P<inline>`(?P<inline_code>{COURSE_CODE_PATTERN})`)"
+        rf"|(?P<code>(?<![A-Z0-9]){COURSE_CODE_PATTERN}(?![A-Z0-9]))",
         re.IGNORECASE,
     )
+    # A placeholder link the model should never see; if one still appears, only its label is shown.
     PLACEHOLDER_LINK = re.compile(
-        r"\]\s*\\?\(\s*@@(\d+)@@\s*\\?\)"
+        r"\[([^\]\n]*)\]\s*\\?\(\s*@@\d+@@\s*\\?\)"
     )
 
     # Retain incomplete Markdown links and course codes between chunks.
     PARTIAL = re.compile(
         r"\[[^\]\n]*(?:\](?:\\?\([^)\n]*)?)?$"
-        r"|(?<![A-Z0-9])[A-Z]{1,2}\d{0,3}[A-Z]?$",
+        r"|(?<![A-Z0-9])[A-Z]{1,4}\d{0,3}[A-Z]?$",
         re.IGNORECASE,
     )
 
     def __init__(self):
         self.course_links: dict[str, str] = {}
-        self.placeholder_links: dict[str, str] = {}
         self.ambiguous: set[str] = set()
         self.buffer = ""
 
@@ -80,8 +84,10 @@ class ChatbotLinkResolver:
             if match:
                 self._register_course(match.group(1), url)
 
-    def register_links(self, links: dict[str, str]) -> None:
-        self.placeholder_links.update(links)
+    def register_course_links(self, links: dict[str, str]) -> None:
+        """Course code -> calendar page links found in the evidence (e.g. prerequisites)."""
+        for code, url in links.items():
+            self._register_course(code, url)
 
     def prepare_context(self, context: str, sources=()) -> str:
         """Register course URLs while keeping the model's context URL-free."""
@@ -103,18 +109,13 @@ class ChatbotLinkResolver:
             if match.group("link") is not None:
                 original = match.group("link")
 
-                def resolve_placeholder(link_match: re.Match) -> str:
-                    url = self.placeholder_links.get(link_match.group(1))
-
-                    if not url:
-                        return "]"
-
-                    return f"]({url})"
-
-                return self.PLACEHOLDER_LINK.sub(
-                    resolve_placeholder,
-                    original,
-                )
+                # A placeholder link: keep the label, linked if it is a known course code.
+                placeholder = self.PLACEHOLDER_LINK.fullmatch(original)
+                if placeholder is None:
+                    return original
+                label = placeholder.group(1)
+                url = self.course_links.get(label.strip().upper())
+                return f"[{label}]({url})" if url else label
 
             code = (
                     match.group("bracket_code")
@@ -124,7 +125,8 @@ class ChatbotLinkResolver:
             url = self.course_links.get(code.upper())
 
             if not url:
-                return match.group(0)
+                # The model bracketed a code it has no link for: show the code, not "[CP164]".
+                return code if match.group("bracket_code") else match.group(0)
 
             return f"[{code}]({url})"
 

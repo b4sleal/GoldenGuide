@@ -1,6 +1,7 @@
 """Qdrant adapter: collections with named vectors ("dense", "sparse", "colbert"), batched upserts,
 hybrid search fused with Reciprocal Rank Fusion, and filter-based deletes.
 """
+from collections.abc import Mapping
 from datetime import datetime
 
 import structlog
@@ -8,6 +9,7 @@ import structlog
 from qdrant_client import AsyncQdrantClient, models
 from qdrant_client.http.models import (
     Distance,
+    PayloadSchemaType,
     PointStruct,
     SparseIndexParams,
     SparseVector as QDrantSparseVector,
@@ -20,7 +22,9 @@ from backend.domain.settings.profiles import VectorCollectionSettings
 from goldenguide_common.contracts.vectors import DenseVector, MultiVector, SparseVector
 from backend.domain.ports.providers.vector_store.vector_models import (
     CollectionMetadata,
+    PayloadIndexKind,
     RetrievedChunk,
+    VectorPayloadField,
     VectorPoint,
 )
 from backend.domain.settings.providers import QdrantSettings
@@ -37,6 +41,10 @@ UPSERT_SAFETY_FACTOR = 0.75
 UPSERT_REQUEST_OVERHEAD_BYTES = 1024
 # Reciprocal Rank Fusion constant: higher values flatten the advantage of top ranks.
 RRF_K = 60
+PAYLOAD_SCHEMA_TYPES = {
+    PayloadIndexKind.KEYWORD: PayloadSchemaType.KEYWORD,
+    PayloadIndexKind.DATETIME: PayloadSchemaType.DATETIME,
+}
 
 
 class QDrantStore:
@@ -44,6 +52,8 @@ class QDrantStore:
         self.client = AsyncQdrantClient(
             host=settings.host,
             port=settings.port,
+            grpc_port=settings.grpc_port,
+            prefer_grpc=settings.prefer_grpc,
             api_key=settings.api_key.get_secret_value(),
             https=settings.https,
             timeout=settings.timeout_seconds,
@@ -99,6 +109,34 @@ class QDrantStore:
             sparse_vectors_config=sparse_config,
             metadata=metadata.model_dump(),
         )
+
+    async def ensure_payload_indexes(
+            self,
+            name: str,
+            fields: Mapping[VectorPayloadField, PayloadIndexKind],
+    ) -> list[VectorPayloadField]:
+        # Qdrant builds a new index from the points already stored, so this also migrates
+        # existing collections. Existing indexes are read first so a type mismatch is never
+        # silently replaced and repeated startups make no changes.
+        existing = (await self.client.get_collection(name)).payload_schema or {}
+        created = []
+        for field, kind in fields.items():
+            schema = PAYLOAD_SCHEMA_TYPES[kind]
+            current = existing.get(field.value)
+            if current is not None:
+                if current.data_type != schema:
+                    raise RuntimeError(
+                        f'Collection "{name}" indexes payload field "{field}" as {current.data_type}, '
+                        f"expected {schema}. Drop that index or migrate the collection."
+                    )
+                continue
+            await self.client.create_payload_index(
+                collection_name=name, field_name=field.value, field_schema=schema, wait=True,
+            )
+            created.append(field)
+        if created:
+            logger.info("qdrant_payload_indexes_created", collection=name, fields=[f.value for f in created])
+        return created
 
     # --------------------------------------------------
     # Upsert

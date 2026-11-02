@@ -40,6 +40,17 @@ Minimal Linux/CI images also need Playwright's OS libraries provisioned during e
 Run `pnpm gen:api` after changing backend request/response models and commit the result; a contract
 change then fails `pnpm typecheck` instead of production.
 
+`/openapi.json` requires the `docs:read` scope, so `gen:api` authenticates as the development-only
+`openapi_codegen` service client (configured in `configs/base/system_config.yml`, see
+`frontend/redocly.yaml`). One-time setup:
+
+1. `uv run python -m backend.core.startup.service_key openapi_codegen` (in the repository root).
+2. Put the printed hash in `SERVICE_CLIENT__OPENAPI_CODEGEN__KEY_HASH` in your `.env` and restart the backend.
+3. Before generating, export the plain key: `$env:GOLDENGUIDE_OPENAPI_AUTHORIZATION = "Bearer <key>"`
+   (PowerShell) or `export GOLDENGUIDE_OPENAPI_AUTHORIZATION="Bearer <key>"`.
+
+The key can read the schema only; it cannot call any admin route. Leave its hash unset outside development.
+
 ## Layout
 
 ```

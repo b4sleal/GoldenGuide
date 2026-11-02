@@ -18,7 +18,7 @@ describe("stored answer content", () => {
     });
 
     expect(answer.blocks).toEqual([
-      { kind: "markdown", markdown: 'Sections[2](<https://loris.wlu.ca> "gg-citation")' },
+      { kind: "markdown", markdown: 'Sections[2](#gg-cite-2 "gg-citation")' },
       { kind: "table", table },
       { kind: "markdown", markdown: "Check availability." },
     ]);

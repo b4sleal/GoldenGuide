@@ -24,6 +24,7 @@ from backend.domain.entities.jobs import (
     JobBatchUpdate,
     JobFailedBatch,
     JobMode,
+    JobRunMetadataKey,
     JobRunResult,
     JobRunUpdate,
     JobStatus,
@@ -148,7 +149,7 @@ class BatchJobRunner:
                 "total_batches": len(batches),
                 "total_processed": total_processed,
                 "metadata": metadata,
-                "audit": audit,
+                JobRunMetadataKey.AUDIT: audit,
                 "audit_error": audit_error,
             }
 

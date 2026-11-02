@@ -5,3 +5,6 @@ catalog:
       max_turns: 3
       # Each earlier message is cut to this length: history is for meaning, not for re-reading answers.
       max_chars_per_message: 1500
+    source_snippet:
+      # Preview text on each source card; the card shows about two lines of it.
+      max_chars: 200

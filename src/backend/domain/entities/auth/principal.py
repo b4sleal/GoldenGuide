@@ -16,6 +16,7 @@ class Scope(StrEnum):
     JOBS_READ = "jobs:read"                  # Read the status and outcome of job runs.
     SETTINGS_WRITE = "settings:write"        # Read and change runtime settings (prompts, models).
     DOCUMENTS_WRITE = "documents:write"      # List and upload documents.
+    DOCS_READ = "docs:read"                  # Read the OpenAPI schema (not call the routes it describes).
 
 
 class Principal(BaseModel):

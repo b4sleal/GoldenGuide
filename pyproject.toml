@@ -50,6 +50,9 @@ backend = [
     "joserfc>=1.6.8",
     "alembic>=1.16",
     "httpx2>=2.15",
+    # Job queue (docs/backend/architecture.md#background-jobs). Pinned exactly: its database schema is
+    # versioned with the package; upgrade steps in docs/backend/operations.md#upgrade-procrastinate-the-job-queue.
+    "procrastinate==3.10.0",
 ]
 
 embedding-gpu = [
@@ -71,6 +74,8 @@ embedding-cpu = [
 
 dev = [
     "import-linter>=2.15",
+    # Bundled libpq for local (e.g. Windows) test runs; container images use the system libpq5.
+    "psycopg[binary]>=3.3.3",
     "pyright>=1.1.414",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.4.0",

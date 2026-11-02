@@ -35,6 +35,7 @@ says at the top who it is for, so the set can later be split into developer and 
 | [Environments](backend/environments.md) | Everyone who deploys | Development, staging and production: env files, hostnames and tunnels, Keycloak, deploying production |
 | [Operations](backend/operations.md) | Operators | Health checks, deploys, rollback, backups, secret rotation, troubleshooting, accounts and ownership |
 | [Glossary](backend/glossary.md) | Everyone | University, retrieval and operations terms |
+| [Embedding memory plan](backend/plans/embedding-memory-plan.md) | Developers | Proposed plan: bounded memory when embedding very large pages (temporary page) |
 
 ## Frontend
 

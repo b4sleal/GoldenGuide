@@ -65,7 +65,11 @@ frontend/
         ChatPage, Composer        route page; composer stays mounted across the first URL change
         AnswerView, AnswerBlocks  answer + progress; blocks shared by live and stored answers
         Markdown, EvidenceTable   safe text rendering; tables from data, inside TableScroll
-        SourceList, SourceCarousel  numbered sources in a scrollable row (touch, drag, keys)
+        CitationChip, SourceCard  inline source chip and its hover/tap card (Radix Popover)
+        rehypeCitationSegments    wraps the text each citation covers, for highlighting
+        AnswerSourcesProvider     one answer's sources and its single highlight (card entry -> text,
+                                  bottom-list source -> chips), shared by chips, card and list
+        SourceList, SourceCarousel  sources in a scrollable row (touch, drag, keys); hover lights cited chips
         AnswerActions, Feedback   copy answer; thumbs up/down (stored answers only)
         Notice, HistorySidebar    outcome notices; conversation list with two-click delete
     test/                         Vitest setup, MSW server and stream helpers
@@ -97,7 +101,9 @@ Composer -> useChatStream.send -> streamChat (fetch POST /api/v1/chat/stream)
 
    Events after a terminal one are ignored.
 4. **Rendering.** Text and citations accumulate into Markdown blocks; a citation becomes a link
-   titled `gg-citation`, which `Markdown.tsx` renders as a numbered chip. `table` events are separate
+   titled `gg-citation` with its source numbers in a fragment href (`stream/citations.ts`), which
+   `Markdown.tsx` renders as a source chip; the plugin wraps the text it covers in a segment span.
+   The `sources` event arrives before the text, so chips can show titles while streaming. `table` events are separate
    blocks rendered by `EvidenceTable` from the data (never through Markdown, so scraped `|` or `<`
    cannot change the table). `react-markdown` renders no raw HTML and drops unsafe URLs.
 5. **Transport errors.** `streamChat` returns `ended | aborted | failed` instead of throwing; the hook
@@ -155,6 +161,7 @@ The runtime proxy retains its stricter policy and immutable caching for built as
 |---|---|
 | `stream/ndjson.test.ts` | split lines, split UTF-8, blank lines, unknown types, bad shapes, bad JSON |
 | `stream/answer.test.ts` | every phase, status, citations, table order, sources, no change after terminal |
+| `stream/citations.test.ts` | citation link encoding, parsing, stripping for copy |
 | `stream/history.test.ts` | restored block order, original source numbering, legacy text fallback, table-only answers |
 | `useChatStream.test.tsx` | complete, conversation ID round trip, error event, closed and dropped stream, Stop, HTTP 429, protocol error, retry, reset (MSW) |
 | `components/ChatPage.test.tsx` | full streamed answer and URL change, interrupted notice, return to new chat, partial answer kept through navigation, stored history, 404, thumbs-down with reason (MSW + memory router) |
@@ -162,8 +169,11 @@ The runtime proxy retains its stricter policy and immutable caching for built as
 | `components/AnswerView.test.tsx` | source-specific progress dots removed when content arrives |
 | `components/AnswerActions.test.tsx` | copy on live answers, denied clipboard + retry, Copy beside feedback, no Copy when empty |
 | `components/EvidenceTable.test.tsx` | database values and line breaks preserved; labelled, focusable table viewports (data and Markdown tables) |
-| `components/SourceList.test.tsx` | backend order/numbering kept, no frontend merging, nav controls only on overflow, mouse drag vs click, touch left to browser |
-| `clipboard.test.ts` | ordered prose, table values and source URLs; no citation hints; empty answers |
+| `components/SourceList.test.tsx` | backend order kept (unnumbered), no frontend merging, nav controls only on overflow, mouse drag vs click, touch left to browser |
+| `components/CitationChip.test.tsx` | chip label and "+N", hover delay, card stays open into the card, hover keeps focus, click/tap pin, keyboard, Escape, scrolling card (real timers) |
+| `components/Markdown.test.tsx` | chips instead of `[n]`; chip hover lights nothing; card entry lights its segment (bold label, list items); bottom-list source lights only chips; ordinary links |
+| `components/rehypeCitationSegments.test.ts` | segment boundaries: previous citation, block edges, adjacent citations, whitespace |
+| `clipboard.test.ts` | ordered prose, table values and a plain source list; no citation markup; empty answers |
 | `api/client.test.ts` | fetch resolved per request (test-installed fetch works), same-origin credentials, feedback bodies |
 | `lib/theme.test.ts` | no animation on first paint, rapid toggles, reduced motion, blocked storage |
 | `e2e/chat.spec.ts` | production build in Chromium, desktop and phone viewports, API mocked |

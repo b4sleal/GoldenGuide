@@ -19,22 +19,23 @@ from backend.application.services.jobs.job_submit import JobSubmissionService
 from backend.application.use_cases.ingestion.embedding_job import EmbeddingJob
 from backend.core.di.container import AppContainer
 from backend.domain.entities.auth.principal import Scope
+from backend.domain.entities.ingestion_types import VectorSource
+from backend.domain.entities.job_requests import IndexingKey, IndexingParams, JobKey
 
 router = APIRouter(dependencies=[Depends(require_scope(Scope.INDEXING_SYNC))])
 
+Submission = Annotated[JobSubmissionService, Depends(Provide[AppContainer.services.job_submission])]
+
 
 async def _submit(
-        request: Request, job: EmbeddingJob, body: IngestionRequest, submission: JobSubmissionService,
+        request: Request, key: IndexingKey, source: VectorSource, body: IngestionRequest,
+        submission: JobSubmissionService,
 ) -> JobAccepted:
     queued = await submission.submit(
-        job_name=job.job_name,
+        job_name=EmbeddingJob.job_name_for(source),
         mode=body.mode,
-        metadata=body.model_dump(mode="json"),
-        work=lambda run_id: job.run(
-            run_id=run_id,
-            mode=body.mode,
-            batch_size=body.batch_size,
-            max_concurrent_batches=body.max_concurrent_batches,
+        request=IndexingParams(
+            key=key, mode=body.mode, batch_size=body.batch_size, max_concurrent_batches=body.max_concurrent_batches,
         ),
     )
     return accepted(request, queued)
@@ -43,34 +44,25 @@ async def _submit(
 @router.post("/courses/sync", status_code=202, response_model=JobAccepted)
 @inject
 async def ingest_courses(
-        request: Request,
-        body: Annotated[IngestionRequest, Query()],
-        job: EmbeddingJob = Depends(Provide[AppContainer.services.course_embedding_job]),
-        submission: JobSubmissionService = Depends(Provide[AppContainer.services.job_submission]),
-):
+        request: Request, body: Annotated[IngestionRequest, Query()], submission: Submission,
+) -> JobAccepted:
     """Embed Academic Calendar course records."""
-    return await _submit(request, job, body, submission)
+    return await _submit(request, JobKey.COURSE_INDEXING, VectorSource.COURSES, body, submission)
 
 
 @router.post("/course-terms/sync", status_code=202, response_model=JobAccepted)
 @inject
 async def ingest_course_terms(
-        request: Request,
-        body: Annotated[IngestionRequest, Query()],
-        job: EmbeddingJob = Depends(Provide[AppContainer.services.course_term_embedding_job]),
-        submission: JobSubmissionService = Depends(Provide[AppContainer.services.job_submission]),
-):
+        request: Request, body: Annotated[IngestionRequest, Query()], submission: Submission,
+) -> JobAccepted:
     """Embed course-term (registration) records."""
-    return await _submit(request, job, body, submission)
+    return await _submit(request, JobKey.COURSE_TERM_INDEXING, VectorSource.COURSE_TERMS, body, submission)
 
 
 @router.post("/pages/sync", status_code=202, response_model=JobAccepted)
 @inject
 async def ingest_wlu_pages(
-        request: Request,
-        body: Annotated[IngestionRequest, Query()],
-        job: EmbeddingJob = Depends(Provide[AppContainer.services.wlu_page_embedding_job]),
-        submission: JobSubmissionService = Depends(Provide[AppContainer.services.job_submission]),
-):
+        request: Request, body: Annotated[IngestionRequest, Query()], submission: Submission,
+) -> JobAccepted:
     """Embed WLU page records."""
-    return await _submit(request, job, body, submission)
+    return await _submit(request, JobKey.PAGE_INDEXING, VectorSource.WLU_PAGES, body, submission)

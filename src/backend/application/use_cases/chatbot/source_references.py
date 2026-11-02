@@ -1,4 +1,5 @@
 """Public citation references, shared by generation and the projection of older saved answers."""
+import re
 from urllib.parse import urlsplit
 
 from backend.domain.entities.answer_content import (
@@ -9,8 +10,25 @@ from backend.domain.entities.conversations import ChatMessagePublic
 from backend.domain.entities.ingestion_types import KnowledgeSourceType
 from backend.domain.settings.ai_behavior import RAGSource
 
+_MARKDOWN_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_LINE_MARKERS = re.compile(r"(?m)^\s*(?:[#>]+|[-*+]\s)\s*")
+_INLINE_MARKUP = re.compile(r"[*`|]+")
+
 REGISTRATION_TITLE = "LORIS - Registration"
 REGISTRATION_TYPES = frozenset({"course_terms", KnowledgeSourceType.LORIS_REGISTRATION.value})
+
+
+def source_snippet(content: str, max_chars: int) -> str | None:
+    """Plain-text start of `content` for a source card: no Markdown, one line, cut at a word."""
+    text = _MARKDOWN_LINK.sub(r"\1", content)
+    text = _INLINE_MARKUP.sub(" ", _LINE_MARKERS.sub("", text))
+    text = " ".join(text.split())
+    if not text:
+        return None
+    if len(text) <= max_chars:
+        return text
+    cut = text[:max_chars].rsplit(" ", 1)[0] or text[:max_chars]
+    return cut.rstrip(" ,;:.-") + "…"
 
 
 def is_registration_source(source: RAGSource, registration_url: str) -> bool:

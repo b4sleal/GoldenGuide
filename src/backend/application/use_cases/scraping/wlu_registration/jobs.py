@@ -10,6 +10,10 @@ from backend.application.use_cases.scraping.wlu_registration.scrape import (
 from backend.domain.entities.jobs import JobMode, JobStatus, JobWorkResult
 from backend.domain.ports.repositories.app.app_db import AppDB
 
+# Job names (the duplicate-run lock key is "<name>:<term_code>").
+REGISTRATION_EXPORT_JOB_NAME = "registration_export"
+REGISTRATION_IMPORT_JOB_NAME = "registration_import"
+
 
 class RegistrationJobs:
     def __init__(
@@ -37,7 +41,7 @@ class RegistrationJobs:
             )
 
         return await OneShotJobRunner(
-            self.app_db, f"registration_export:{term_code}"
+            self.app_db, f"{REGISTRATION_EXPORT_JOB_NAME}:{term_code}"
         ).execute(
             run_id=run_id,
             mode=JobMode.FRESH,
@@ -51,7 +55,7 @@ class RegistrationJobs:
             )
 
         return await OneShotJobRunner(
-            self.app_db, f"registration_import:{term_code}"
+            self.app_db, f"{REGISTRATION_IMPORT_JOB_NAME}:{term_code}"
         ).execute(
             run_id=run_id,
             mode=JobMode.UPDATE,

@@ -9,7 +9,8 @@ Wire format: one JSON object per line (application/x-ndjson). Event types:
                                              Clients map these codes to wording.
     {"type": "text", "text": ...}            answer text, in order
     {"type": "citation", ...}                inline citation markers
-    {"type": "sources", "sources": [...]}    source list for the answer
+    {"type": "sources", "sources": [...]}    source list for the answer: sent once, before the first
+                                             text, so citations can show their sources while streaming
     {"type": "error", "error": {...}}        terminal: generation failed; same envelope as HTTP errors
     {"type": "ok"}                           terminal: the answer is complete
 

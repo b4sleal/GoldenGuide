@@ -5,6 +5,7 @@ catalog:
         version: 1
         key: minilm_large_dense
         chunking: ${catalog.providers.text_splitter.large}
+        ingest_chunks_per_slice: 64
         text_enrichment: ${catalog.text_enrichment.retrieval_text.deep}
         vectors:
           dense:
@@ -16,6 +17,7 @@ catalog:
         version: 1
         key: minilm_large_sparse
         chunking: ${catalog.providers.text_splitter.large}
+        ingest_chunks_per_slice: 64
         text_enrichment: ${catalog.text_enrichment.retrieval_text.deep}
         vectors:
           dense:
@@ -30,6 +32,7 @@ catalog:
         version: 1
         key: minilm_large_multi
         chunking: ${catalog.providers.text_splitter.large}
+        ingest_chunks_per_slice: 64
         text_enrichment: ${catalog.text_enrichment.retrieval_text.deep}
         vectors:
           dense:
@@ -46,6 +49,7 @@ catalog:
         version: 1
         key: minilm_large_multi_sparse
         chunking: ${catalog.providers.text_splitter.large}
+        ingest_chunks_per_slice: 64
         text_enrichment: ${catalog.text_enrichment.retrieval_text.deep}
         vectors:
           dense:

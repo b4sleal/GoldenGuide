@@ -30,7 +30,9 @@ Admin routes are mounted under `/api/v1/admin` behind `get_principal` and an ori
 child router also declares the scope it requires (`require_scope`), so a route stays protected even
 if it is ever mounted somewhere else.
 
-Scopes: `settings:write`, `documents:write`, `sources:collect`, `indexing:sync`, `jobs:read`.
+Scopes: `settings:write`, `documents:write`, `sources:collect`, `indexing:sync`, `jobs:read`, `docs:read`.
+`docs:read` reads `/openapi.json` only; it grants no route the schema describes. The development-only
+`openapi_codegen` client holds just this scope, for frontend type generation (`pnpm gen:api`).
 
 ## Sign-in (OIDC)
 
@@ -162,7 +164,8 @@ Optional caches behave the other way on purpose: a cache miss or outage falls ba
 - `OIDC_REDIRECT_URI` must equal `SITE_ORIGIN` + `/api/v1/auth/callback`, or the backend won't start.
 - **Error boundary.** Errors return one envelope with `request_id` and `trace_id`; stack traces and
   internal details stay in the logs.
-- **API docs** (`/docs`, `/openapi.json`) are admin-only.
+- **API docs**: the Swagger UI (`/docs`) is admin-only; the schema (`/openapi.json`) needs `docs:read`
+  (admins, or a service client granted it).
   Swagger UI's inline initializer is allowed by a SHA-256 hash of its exact bytes, added to
   `script-src` on that response only; the CSP never allows arbitrary inline scripts.
 

@@ -15,6 +15,12 @@ afterAll(() => server.close());
 
 // jsdom lacks these browser APIs used by the chat page.
 Element.prototype.scrollIntoView = () => {};
+// Radix popovers (the citation cards) observe their anchor's size.
+globalThis.ResizeObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
 // TanStack Router scrolls the window after navigation; jsdom's implementation only logs an error.
 window.scrollTo = () => {};
 window.matchMedia ??= ((query: string) => ({

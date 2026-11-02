@@ -46,7 +46,7 @@ flowchart TB
         RR --> WD["Whole pages<br/>When chunks parent document fit the token budget (e.g. 1 result)" ]
     end
 
-    BU --> CTX[Context: numbered sources,<br/>tables, link placeholders,<br/>limitation notes]
+    BU --> CTX[Context: numbered sources,<br/>tables, plain course codes,<br/>limitation notes]
     WD --> CTX
     CTX --> G[Answer LLM<br/>set by the profile]
     G --> S[Stream: markdown text, citations, links<br/>Tables resolved on the fly instead of by LLM]
@@ -155,9 +155,10 @@ semantic search fails entirely, the answer is told so (see below) instead of ans
   This consolidation happens before generation, so streamed citations and saved references agree.
   Older history responses consolidate registration references and remap citation IDs together;
   the stored rows are not rewritten.
-- **Link placeholders.** URLs in the evidence are replaced by short `@@n@@` placeholders. The model
-  copies placeholders back and the stream restores the real URLs, so the model never retypes (or
-  invents) a link.
+- **Links.** The model's context holds no Markdown links: stored `[CP164](@@n@@)` links become plain
+  labels (`CP164`), and course codes with an Academic Calendar page are collected (`course_links`).
+  The stream links every mention of a known course code (2-4 letter subjects, e.g. `GENG135`), so the
+  model never copies, retypes or invents a link, and a bracketed code with no link is shown plainly.
 - **Limitation notes** (`retrieval_limitations.py`). Every request has an outcome: completed (with a
   count and whether it was truncated), unsupported, or failed. The context tells the answer model
   which parts of the question could not be answered and why, so it says so instead of answering from
@@ -171,12 +172,13 @@ semantic search fails entirely, the answer is told so (see below) instead of ans
 editable by admins) and streams the model's output through a chain applied to every chunk:
 
 ```
-citations ([Source n] -> citation event) -> links (@@n@@ -> URL) -> tables ({{TABLE:n}} -> table event)
+citations ([n] / [n, m] / [Source n] -> citation event) -> links (course codes -> calendar URLs) -> tables ({{TABLE:n}} -> table event)
 ```
 
 Each stage holds back partial markers across chunk boundaries and releases them in order. The
-browser receives newline-delimited JSON: `status` events (progress) first, then `text`, `citation`,
-`table`, then `sources` (always last), and a terminal `ok` or `error` added by `api/streaming.py`
+browser receives newline-delimited JSON: `status` events (progress) and the `sources` list first
+(so citation chips can show their sources while the text streams), then `text`, `citation`, `table`,
+and a terminal `ok` or `error` added by `api/streaming.py`
 ([stream contract](api.md#chat-stream-contract)).
 
 The prompt is an `LLMRequest` (`domain/entities/llm.py`): fixed `system` instructions plus

@@ -8,6 +8,7 @@ from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 
 from backend.application.services.jobs.zombie_sweep import sweep_forever
 from backend.core.di.container import AppContainer
+from backend.domain.settings.jobs import JobExecutionMode
 from goldenguide_common.logging.telemetry import shutdown_telemetry
 
 logger = structlog.get_logger("backend.startup")
@@ -34,10 +35,12 @@ def build_container() -> AppContainer:
 
 @asynccontextmanager
 async def lifespan(app):
-    """FastAPI lifespan: startup checks, OIDC discovery and the job sweep; on exit, stop jobs and flush telemetry."""
+    """FastAPI lifespan: startup checks, OIDC discovery, and the job queue (worker execution) or the job
+    sweep (in-process execution); on exit, stop jobs, close the queue and flush telemetry."""
     container = app.container
     sweep = None
     launcher = None
+    queue_app = None
     try:
         try:
             await container.startup_runner().initialize()
@@ -47,11 +50,19 @@ async def lifespan(app):
             # One structured record (with traceback) in Loki; the error still stops the replica.
             logger.exception("startup.failed")
             raise
-        # Fail runs left unfinished by a previous process, then keep checking (zombie_sweep.py).
+        jobs = container.app_config().system.jobs
+        if jobs.execution == JobExecutionMode.WORKER:
+            # The API only defers jobs through Procrastinate, so its connection pool must be open.
+            # Workers run the jobs and the zombie sweep (backend/worker.py).
+            queue_app = container.services.procrastinate_app()
+            await queue_app.open_async()
+        else:
+            # Jobs run in this process: fail runs a previous process left unfinished, then keep
+            # checking (zombie_sweep.py).
+            sweep = asyncio.create_task(
+                sweep_forever(container.persistence.app_db(), jobs), name="job-zombie-sweep",
+            )
         launcher = container.services.job_launcher()
-        sweep = asyncio.create_task(
-            sweep_forever(container.persistence.app_db(), container.app_config().system.jobs), name="job-zombie-sweep",
-        )
         yield
     finally:
         if sweep is not None:
@@ -61,5 +72,7 @@ async def lifespan(app):
         try:
             if launcher is not None:
                 await launcher.shutdown()
+            if queue_app is not None:
+                await queue_app.close_async()
         finally:
             shutdown_telemetry()

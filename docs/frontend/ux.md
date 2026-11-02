@@ -32,7 +32,7 @@ under **0.1 s** feels instant; under **1 s** keeps flow; past **~10 s** users lo
 |---|---|
 | Send pressed (0 ms) | Question appears immediately; input clears; the answer area shows a progress label. |
 | Before first token | The backend's current stage ("Searching LORIS registration…") with decorative dots. |
-| First token | Progress swaps to streaming text with a caret; source chips appear when `sources` arrives. |
+| First token | Progress swaps to streaming text with a caret; the source list arrives before the text, so citation chips show their titles as they stream in. |
 | > 10 s (`SLOW_ANSWER_MS`) | "Still working, checking more sources…"; Stop stays available. |
 
 ### Status messages
@@ -53,13 +53,21 @@ plan, sent once per source, never guessed from the question text.
 
 ## Answers
 
-- **Citations** are numbered chips that link to the source.
+- **Citations** are inline chips after the text they support: the first source's title, plus "+N" when
+  a citation names several; there are no `[1]` numbers. Hovering a chip (a click, tap or Enter on
+  touch and keyboard) opens a card under it with each cited source's site, title and a two-line preview;
+  it fits about two entries and scrolls the rest, stays open while the pointer moves into it, and
+  Escape closes it. Entries open the source in a new tab. Hovering the chip highlights nothing;
+  hovering a source in its card highlights the text the citation covers (since the previous citation,
+  within the same paragraph or list item).
 - **Tables** of database records (sections, meetings, seats) render from data in a scrollable,
   keyboard-focusable region; wide tables scroll instead of squeezing cells.
 - **Sources** sit in one horizontally scrollable row: native touch scrolling, mouse dragging, arrow
-  buttons only when the row overflows. The frontend keeps the backend's order and numbering and never
-  merges sources itself.
-- **Copy** puts editable Markdown, tab-separated table data and source links on the clipboard.
+  buttons only when the row overflows. The frontend keeps the backend's order and never merges sources
+  itself. Entries are not numbered; hovering or focusing one highlights the chips that cite it (not their
+  text). Chips never highlight entries in the row: one highlight at a time keeps the answer calm.
+- **Copy** puts editable Markdown (without citation chips), tab-separated table data and a plain list
+  of source links on the clipboard.
 - **Feedback** (thumbs up/down, with a reason for thumbs down) is offered on answers loaded from
   history; live answers do not yet know their stored message ID.
 

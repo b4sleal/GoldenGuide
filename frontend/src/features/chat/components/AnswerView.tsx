@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { ANSWER_READY_LABEL, ENDED_NOTICES, SLOW_ANSWER_LABEL, SLOW_ANSWER_MS, statusLabel } from "../labels";
 import { type Answer, hasContent, isFinished } from "../stream/answer";
 import { AnswerActions } from "./AnswerActions";
+import { AnswerSourcesProvider } from "./AnswerSourcesProvider";
 import { AnswerBlocks } from "./AnswerBlocks";
 import { Notice } from "./Notice";
 import { SourceList } from "./SourceList";
@@ -31,37 +32,39 @@ export function AnswerView({ answer, onRetry }: { answer: Answer; onRetry?: () =
   const notice = answer.phase === "error" ? answer.error?.message : ENDED_NOTICES[answer.phase];
 
   return (
-    <div className="space-y-3" aria-busy={running}>
-      {showStatus && (
-        // Real backend progress, announced politely to screen readers.
-        <p role="status" aria-live="polite" className="flex items-center gap-2 text-sm text-muted-foreground">
-          {statusLabel(answer.status).replace(/…$/, "")}
-          {/* Decorative dots never become repeated live-region announcements. */}
-          <span className="loading-dots" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </span>
+    <AnswerSourcesProvider sources={answer.sources}>
+      <div className="space-y-3" aria-busy={running}>
+        {showStatus && (
+          // Real backend progress, announced politely to screen readers.
+          <p role="status" aria-live="polite" className="flex items-center gap-2 text-sm text-muted-foreground">
+            {statusLabel(answer.status).replace(/…$/, "")}
+            {/* Decorative dots never become repeated live-region announcements. */}
+            <span className="loading-dots" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+          </p>
+        )}
+
+        {hasContent(answer) && (
+          <div className={cn("answer-prose", running && "streaming-caret")}>
+            <AnswerBlocks blocks={answer.blocks} />
+          </div>
+        )}
+
+        {running && slow && <p className="text-sm text-muted-foreground">{SLOW_ANSWER_LABEL}</p>}
+
+        {notice && <Notice message={notice} reference={answer.error?.request_id} onRetry={onRetry} />}
+
+        {/* Announcing every streamed token would flood a screen reader; announce completion instead. */}
+        <p className="sr-only" aria-live="polite">
+          {answer.phase === "complete" ? ANSWER_READY_LABEL : ""}
         </p>
-      )}
 
-      {hasContent(answer) && (
-        <div className={cn("answer-prose", running && "streaming-caret")}>
-          <AnswerBlocks blocks={answer.blocks} />
-        </div>
-      )}
-
-      {running && slow && <p className="text-sm text-muted-foreground">{SLOW_ANSWER_LABEL}</p>}
-
-      {notice && <Notice message={notice} reference={answer.error?.request_id} onRetry={onRetry} />}
-
-      {/* Announcing every streamed token would flood a screen reader; announce completion instead. */}
-      <p className="sr-only" aria-live="polite">
-        {answer.phase === "complete" ? ANSWER_READY_LABEL : ""}
-      </p>
-
-      {answer.phase !== "stopped" && <SourceList sources={answer.sources} />}
-      {!running && <AnswerActions blocks={answer.blocks} sources={answer.sources} />}
-    </div>
+        {answer.phase !== "stopped" && <SourceList sources={answer.sources} />}
+        {!running && <AnswerActions blocks={answer.blocks} sources={answer.sources} />}
+      </div>
+    </AnswerSourcesProvider>
   );
 }

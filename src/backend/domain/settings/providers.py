@@ -22,6 +22,10 @@ class QdrantSettings(FrozenInfra):
     provider: Providers.VectorStoreProvider
     host: str
     port: int
+    # gRPC sends vectors as binary float32 instead of JSON (~3-4x less traffic for ColBERT batches);
+    # `port` (REST) stays in use for calls without a gRPC equivalent.
+    grpc_port: int
+    prefer_grpc: bool
     api_key: SecretStr
     # qdrant-client otherwise uses httpx's 5 s default: too short for wait=True upserts of ColBERT batches.
     timeout_seconds: int = Field(gt=0)

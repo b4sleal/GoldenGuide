@@ -51,7 +51,7 @@ describe("ChatPage", () => {
     expect(await screen.findByText("Answer ready.")).toBeInTheDocument();
     const answer = screen.getByRole("article", { name: /goldenguide answer/i });
     expect(within(answer).getByText(/CP264 requires CP164/)).toBeInTheDocument();
-    expect(within(answer).getByRole("link", { name: /source 1/i })).toHaveAttribute("href", "https://academic-calendar.wlu.ca/cp264");
+    expect(within(answer).getByRole("button", { name: "Source: CP264 Data Structures" })).toBeInTheDocument();
     expect(within(answer).getByRole("cell", { name: "Mon/Wed" })).toBeInTheDocument();
     expect(within(answer).getByRole("region", { name: "Sources" })).toHaveTextContent("CP264 Data Structures");
     expect(await screen.findByText("Answer ready.")).toBeInTheDocument();
@@ -59,6 +59,11 @@ describe("ChatPage", () => {
     expect(screen.getByLabelText(/ask about laurier/i)).toBe(composer);
     expect(composer).toHaveFocus();
     expect(within(answer).getByRole("button", { name: "Copy answer" })).toBeInTheDocument();
+
+    // The chip's card links to the cited source.
+    await user.click(within(answer).getByRole("button", { name: "Source: CP264 Data Structures" }));
+    expect(within(screen.getByRole("list", { name: "Cited sources" })).getByRole("link"))
+      .toHaveAttribute("href", "https://academic-calendar.wlu.ca/cp264");
   });
 
   it("marks an interrupted answer as incomplete and offers a retry", async () => {
@@ -155,7 +160,9 @@ describe("ChatPage", () => {
 
     const answer = await screen.findByRole("article", { name: /goldenguide answer/i });
     expect(within(answer).getByText("Saved sections")).toBeInTheDocument();
-    expect(within(answer).getByRole("link", { name: /source 1/i })).toHaveAttribute("href", "https://loris.wlu.ca");
+    await userEvent.setup().click(within(answer).getByRole("button", { name: "Source: LORIS registration" }));
+    expect(within(screen.getByRole("list", { name: "Cited sources" })).getByRole("link"))
+      .toHaveAttribute("href", "https://loris.wlu.ca");
     expect(within(answer).getByRole("cell", { name: "Mon/Wed" })).toBeInTheDocument();
     expect(within(answer).getByRole("region", { name: "Sources" })).toHaveTextContent("LORIS registration");
     expect(within(answer).getByRole("button", { name: "Good answer" })).toBeInTheDocument();

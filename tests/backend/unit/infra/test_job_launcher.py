@@ -1,96 +1,60 @@
-"""Real asyncio execution covers detached work, heartbeat, shutdown and missing outcomes."""
+"""InProcessJobLauncher detaches runs from the request and fails interrupted runs on shutdown."""
 
 import asyncio
-from contextlib import asynccontextmanager
-from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
 
-from backend.domain.entities.jobs import JobBatchStatus, JobStatus
+from backend.domain.entities.job_requests import RegistrationImportParams
+from backend.domain.entities.jobs import JobFailureReason
 from backend.domain.errors import DependencyUnavailableError
 from backend.infra.jobs.in_process_launcher import InProcessJobLauncher
 
+REQUEST = RegistrationImportParams(term_code="202609")
 
-class DB:
+
+class FakeExecution:
+    """JobRunExecutor whose runs block until released; records interruption handling."""
+
     def __init__(self):
-        self.status = JobStatus.QUEUED
-        self.heartbeat = asyncio.Event()
-        self.jobs = SimpleNamespace(
-            update_runs=AsyncMock(side_effect=self.update),
-            update_batches=AsyncMock(return_value=1),
-            heartbeat_run=AsyncMock(side_effect=lambda run_id: self.heartbeat.set()),
-            fetch_runs=AsyncMock(
-                side_effect=lambda **kwargs: [SimpleNamespace(status=self.status)]
-            ),
-        )
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+        self.ran: list[tuple[int, object]] = []
+        self.failed: list[tuple[int, JobFailureReason]] = []
 
-    async def update(self, update_model, filters):
-        if self.status not in filters.statuses:
-            return 0
-        self.status = update_model.status
-        return 1
+    async def run(self, run_id, request):
+        self.ran.append((run_id, request))
+        self.started.set()
+        await self.release.wait()
 
-    @asynccontextmanager
-    async def start(self):
-        yield self
+    async def fail_if_unfinished(self, run_id, reason):
+        self.failed.append((run_id, reason))
 
 
-async def test_launch_returns_before_work_finishes_and_keeps_heartbeating():
-    db = DB()
-    launcher = InProcessJobLauncher(db, heartbeat_seconds=0.01)
-    started, release = asyncio.Event(), asyncio.Event()
+async def test_launch_returns_before_the_run_finishes():
+    execution = FakeExecution()
+    launcher = InProcessJobLauncher(execution)
 
-    async def work():
-        started.set()
-        await release.wait()
-        db.status = JobStatus.SUCCESS
+    await launcher.launch(1, REQUEST)
+    await asyncio.wait_for(execution.started.wait(), 1)
 
-    await launcher.launch(1, work)
-    await asyncio.wait_for(started.wait(), 1)
-    await asyncio.wait_for(db.heartbeat.wait(), 1)
-    assert db.status == JobStatus.QUEUED
+    assert execution.ran == [(1, REQUEST)]
     tasks = list(launcher._tasks)
-    release.set()
+    assert tasks and not tasks[0].done()  # Still running: submission did not wait for it.
+    execution.release.set()
     await asyncio.gather(*tasks)
-    await launcher.shutdown()
-    assert db.status == JobStatus.SUCCESS
-    db.jobs.update_batches.assert_not_awaited()
+    assert launcher._tasks == {}
 
 
 @pytest.mark.parametrize("let_start", [False, True])
-async def test_shutdown_fails_run_and_unfinished_batches_even_before_first_instruction(
-    let_start,
-):
-    db = DB()
-    launcher = InProcessJobLauncher(db, 0.01)
-    started = asyncio.Event()
+async def test_shutdown_cancels_runs_and_fails_them_even_before_their_first_instruction(let_start):
+    execution = FakeExecution()
+    launcher = InProcessJobLauncher(execution)
 
-    async def work():
-        started.set()
-        await asyncio.Event().wait()
-
-    await launcher.launch(1, work)
+    await launcher.launch(1, REQUEST)
     if let_start:
-        await asyncio.wait_for(started.wait(), 1)
+        await asyncio.wait_for(execution.started.wait(), 1)
     await launcher.shutdown()
-    assert db.status == JobStatus.FAILED
-    filters = db.jobs.update_batches.call_args.kwargs["filters"]
-    assert set(filters.statuses) == {JobBatchStatus.QUEUED, JobBatchStatus.RUNNING}
+
+    assert execution.failed == [(1, JobFailureReason.INTERRUPTED)]
     with pytest.raises(DependencyUnavailableError):
-        await launcher.launch(2, work)
-
-
-@pytest.mark.parametrize("raises", [False, True])
-async def test_exception_or_missing_terminal_outcome_is_failed(raises):
-    db = DB()
-    launcher = InProcessJobLauncher(db, 0.01)
-
-    async def work():
-        if raises:
-            raise ValueError("failure")
-
-    await launcher.launch(1, work)
-    await asyncio.gather(*list(launcher._tasks))
-    assert db.status == JobStatus.FAILED
-    await launcher.shutdown()
+        await launcher.launch(2, REQUEST)

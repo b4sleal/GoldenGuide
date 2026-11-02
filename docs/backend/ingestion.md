@@ -60,6 +60,10 @@ overwrites the other.
 
 Every collection and indexing endpoint returns **`202 Accepted`** with a `run_id` and a
 `status_url`. Accepting a request is not completing it: poll `GET /api/v1/admin/jobs/{run_id}`.
+The status response includes a `message` per outcome (`partial_success` means the job finished but
+some items were not retrieved) and, once finished, the run's `summary` (work counts) and `audit`.
+Jobs run in `worker` containers, or inside the API in development
+([architecture](architecture.md#background-jobs)).
 
 ```
 queued -> running -> success | partial_success | failed | cancelled
@@ -83,7 +87,10 @@ How runs stay correct (`application/services/jobs/`):
   running, across every backend instance (PostgreSQL advisory lock).
 - **Recovery.** Running jobs send heartbeats. On shutdown, interrupted runs are recorded as failed.
   After a hard crash, a periodic zombie sweep fails runs whose heartbeat stopped (default: five
-  minutes), and their unfinished batches become retryable. Nothing is replayed automatically.
+  minutes) and runs still queued after 24 hours; their unfinished batches become retryable. Nothing
+  is replayed automatically.
+- **Parsing off the event loop.** HTML parsing and conversion run through the `ComputeExecutor` port:
+  threads in the API, a process pool in the worker, so jobs neither block requests nor use one core only.
 - **Audits.** Crawl and import jobs finish with an audit (page counts by status), stored on the run.
 
 One-shot work (a whole crawl, a LORIS export) uses the same run/batch model with a single batch,
@@ -109,10 +116,37 @@ flowchart TB
 2. **Chunk.** `RecursiveTextSplitter` (LangChain) splits on paragraphs, then lines, then words.
    Sizes range from small (300 characters) to large (1,500), with overlap, chosen per collection.
 3. **Embed.** Each chunk is embedded with every vector type its collection defines. Local models
-   run in the embedding service; cloud embeddings (Gemini, OpenAI) are also supported.
+   run in the embedding service; cloud embeddings (Gemini, OpenAI) are also supported. A record is
+   embedded and written in slices of `ingest_chunks_per_slice` chunks (64, per collection profile),
+   so the worker holds one slice's vectors at a time however large the page is.
 4. **Store.** Points go to the collection named by the profile (`configs/catalogs/profiles/
-   vector_collection.yml`). Each collection has a `version`; changing its chunking or vectors means
-   bumping the version, and provisioning refuses to start against a mismatched existing collection.
+   vector_collection.yml`), one upsert per slice. Point ids hash the collection, record, chunk
+   index and chunk text, so an unchanged chunk overwrites itself. After every slice is written, the
+   record's points from earlier runs (`updated_at` before this run) are deleted. Each collection
+   has a `version`; changing its chunking or vectors means bumping the version, and provisioning
+   refuses to start against a mismatched existing collection.
+
+### Memory bounds
+
+Memory depends on configuration, never on page size:
+
+| Where | Bounded by |
+| --- | --- |
+| Worker, per record | `ingest_chunks_per_slice` chunks' vectors (`vector_collection.yml`) |
+| Backend to embedding service, per request | `max_texts_per_request` texts (`embedding_service.yml`); the service rejects more with `413` |
+| SPLADE, per inference | `max_batch_tokens` padded tokens (texts x longest text), pooled on the GPU; at most `max_concurrent_inferences` at once (`ml_local.yml`) |
+
+SPLADE's MLM logits are `[texts, tokens, 30522]`, so its peak scales with padded tokens; the
+service packs texts by token budget instead of a fixed count (`src/embedding_service/models/
+batching.py`). The GPU peak is about `max_batch_tokens x 30522 x 4 bytes` (float32): ~1 GB at 8192.
+
+### Payload indexes
+
+Ingestion filters on `source_id` for every record, and the sweeps on `embedding_source` and
+`updated_at`. Each is indexed in Qdrant (`FILTERED_PAYLOAD_FIELDS` in `vector_models.py`), so these
+lookups stay fast as the collection grows. `provision` creates missing indexes on new and existing
+collections; a field indexed with a different type stops it. A new filter on another payload field
+must be added to `FILTERED_PAYLOAD_FIELDS`.
 
 ## Document uploads
 
@@ -139,9 +173,14 @@ what the scheduled workflow uses.
 
 ## Limits and known gaps
 
-- Jobs run as tasks inside the API process, not on a durable queue. A restart interrupts them
-  (recorded as failed and retryable). A separate worker would be a new adapter for the same job
-  ports.
+- A worker restart interrupts its running job (recorded as failed and retryable); jobs are not
+  retried automatically.
+- If a record fails partway (a slice could not be embedded or written), its earlier points stay
+  and so do the slices already written: until the next successful run, search can return both the
+  old and new version of a changed chunk. The record stays `needs_embedding`, so the next run
+  replaces them. A page is never left without points by a failure.
+- Progress is logged per batch (`embedding_batch_finished`), so a batch of large pages can look
+  idle for a few minutes.
 - Different job names can work on related data at the same time; the nightly workflow orders its
   stages, but there is no global ingestion lock.
 - An unavailable `robots.txt` is treated as "disallowed", which is logged but can produce a

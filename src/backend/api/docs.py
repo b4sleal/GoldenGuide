@@ -1,5 +1,5 @@
 
-"""Administrator-only FastAPI Swagger documentation."""
+"""FastAPI documentation: the Swagger UI is for administrators; the schema also for `docs:read` clients."""
 
 import base64
 import hashlib
@@ -9,7 +9,8 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from backend.api.auth import require_admin
+from backend.api.auth import require_admin, require_scope
+from backend.domain.entities.auth.principal import Scope
 
 
 def install_admin_docs(app: FastAPI) -> None:
@@ -43,7 +44,8 @@ def install_admin_docs(app: FastAPI) -> None:
         "/openapi.json",
         include_in_schema=False,
         response_class=JSONResponse,
-        dependencies=[Depends(require_admin)],
+        # Reading the schema grants no route: each route still checks its own scope.
+        dependencies=[Depends(require_scope(Scope.DOCS_READ))],
     )
     async def openapi_schema():
         return JSONResponse(app.openapi())

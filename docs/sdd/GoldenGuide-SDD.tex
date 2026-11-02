@@ -103,7 +103,7 @@
 \begin{titlepage}
   \centering
   \vspace*{2cm}
-  \IfFileExists{../../frontend/public/logo.png}{\includegraphics[width=3cm]{../../frontend/public/logo.png}\par\vspace{1cm}}{}
+  \IfFileExists{../../frontend/public/logo.png}{\includegraphics[width=3cm]{../../frontend/public/logo}\par\vspace{1cm}}{}
   {\Huge\bfseries\color{lauPurple} GoldenGuide\par}
   \vspace{0.4cm}
   {\Large A grounded academic assistant for Wilfrid Laurier University\par}
@@ -327,7 +327,7 @@ architecture with domain-driven design keeps business logic independent of frame
 \begin{tikzpicture}
   \node[ext] (cf) at (1.2,6.4) {Cloudflare Tunnel\\public ingress};
   \node[box] (fe) at (1.2,4.6) {\textbf{frontend}\\Nginx: static UI,\\/api reverse proxy};
-  \node[box=40mm,minimum height=16mm,fill=softPurple] (api) at (1.2,1.8) {\textbf{backend}\\FastAPI: chat, auth, admin\\+ background jobs};
+  \node[box=40mm,minimum height=16mm,fill=softPurple] (api) at (1.2,1.8) {\textbf{backend} + \textbf{worker}\\FastAPI: chat, auth, admin\\worker: queued background jobs};
   \node[store] (pg) at (-3.2,3.0) {PostgreSQL\\records, jobs};
   \node[store] (qd) at (-3.2,1.0) {Qdrant\\vectors};
   \node[store] (mn) at (-3.2,-1.0) {MinIO\\raw sources};
@@ -363,7 +363,8 @@ architecture with domain-driven design keeps business logic independent of frame
 \midrule
 \endhead
 frontend & Nginx image & Serves the static UI and proxies \code{/api}, \code{/docs} and health routes to the backend, unbuffered for streaming. The browser only talks to this origin. \\
-backend & Python runtime image (backend group) & FastAPI API (chat, sign-in, admin) and background jobs (crawling, parsing, indexing) as tracked tasks. \\
+backend & Python runtime image (backend group) & FastAPI API (chat, sign-in, admin). Records and queues background jobs (runs them in-process only in development). \\
+worker & Same image as backend & Runs queued background jobs (crawling, parsing, indexing) with its own CPU and memory limits; parses in a pool of child processes. \\
 provision & Same image as backend & One-shot job before the API starts: Alembic migrations, MinIO buckets, Qdrant collections with version checks. Idempotent. \\
 local-embedding-gpu / -cpu & Python runtime image (embedding group) & Separate service loading dense, sparse, multi-vector and reranking models; API-key protected. \\
 postgres + db-bootstrap & postgres:16 & Authoritative structured data; the bootstrap job creates the databases. \\
@@ -425,7 +426,7 @@ profile genuinely differs: the embedding service and the data stores.\par
 \field{Rationale} One codebase, one release cadence and one domain model. Microservices would add network
 failure modes, distributed transactions and deployment overhead with no scaling need behind them.
 Hexagonal boundaries keep a later split possible.\par
-\field{Consequences} Background jobs run inside the API process today (risk R1).
+\field{Consequences} Background jobs run in a separate worker container from the same codebase and image (decision D14).
 \end{decision}
 
 \begin{decision}{D2}{Structured retrieval first; semantic search where it fits}
@@ -546,6 +547,23 @@ and a Cloudflare Tunnel for public ingress.\par
 \field{Rationale} The only prerequisite for a contributor is Docker, and the same definition runs on
 one PC or across machines. Kubernetes would be premature; the containers map directly to ECS or
 Kubernetes later.
+\end{decision}
+
+\begin{decision}{D14}{Background jobs on a Postgres-backed queue, run by separate workers}
+\field{Decision} Jobs are stored as typed requests on their run and delivered through Procrastinate, an
+asynchronous job queue in the existing PostgreSQL, to \texttt{worker} containers with their own resource
+limits. The application's \texttt{job\_runs}/\texttt{job\_batches} remain the record of outcomes;
+Procrastinate only delivers work. In-process execution remains for development.\par
+\field{Alternatives} Keep jobs in the API process; Celery; Redis-backed async queues (arq, Taskiq);
+Temporal; a homegrown \texttt{SKIP LOCKED} queue.\par
+\field{Rationale} Jobs in the API process competed with chat for one event loop and core (status calls
+took seconds during imports) and died on every deploy. Procrastinate is asynchronous like the rest of
+the stack and needs no new infrastructure; Celery is synchronous-first, Redis is not the durable store,
+Temporal needs its own server and deterministic workflow code, and a homegrown queue would own every
+edge case. Keeping outcomes in \texttt{job\_runs} preserves partial-success, batch and audit semantics
+the queue cannot express.\par
+\field{Consequences} A second PostgreSQL driver (psycopg) for the queue; Procrastinate upgrades need
+their SQL migrations wrapped in Alembic revisions; recording and queueing a run are two writes (risk R1).
 \end{decision}
 
 % =============================================================================================
@@ -707,8 +725,14 @@ All collection and indexing work runs through one job model (\code{application/s
 \end{figure}
 
 \begin{itemize}
-  \item \textbf{Submission.} A run row is committed \texttt{queued}, the work is handed to the launcher,
-        and the endpoint returns \texttt{202} with a status URL. Accepting a request is not completing it.
+  \item \textbf{Submission.} A run row is committed \texttt{queued} with its typed job request (job key and
+        parameters), the launcher queues it, and the endpoint returns \texttt{202} with a status URL.
+        Accepting a request is not completing it.
+  \item \textbf{Execution.} In staging and production a \texttt{worker} container claims the run from a
+        Procrastinate queue in PostgreSQL (only the run id is queued) and rebuilds the job from the stored
+        request; in development the API runs it in-process. A run that is no longer queued is skipped, so a
+        job never runs twice. CPU-bound parsing runs off the event loop: threads in the API, a process
+        pool in the worker.
   \item \textbf{No overlap.} A second run of the same job name is refused (\texttt{409}) while one is
         queued or running, across all backend instances, using a PostgreSQL transaction advisory lock.
   \item \textbf{Batches.} Large jobs page through a table in id order (default 200 rows, up to three
@@ -720,8 +744,9 @@ All collection and indexing work runs through one job model (\code{application/s
         batch, so every job shares one status and history view.
   \item \textbf{Heartbeats and recovery.} Running jobs send heartbeats. On shutdown, tasks are cancelled
         and awaited and interrupted runs recorded as failed. After a crash, a periodic zombie sweep
-        (default: heartbeat older than five minutes, checked every two minutes) fails abandoned runs;
-        their unfinished batches become retryable. Nothing is replayed automatically.
+        (checked every two minutes) fails running runs without a heartbeat for five minutes and runs
+        still queued after 24 hours; their unfinished batches become retryable. A periodic worker task
+        releases queue entries of dead workers. Nothing is replayed automatically.
   \item \textbf{Scheduling.} A GitHub Actions workflow runs the full sequence nightly at 05:00
         America/Toronto with a scoped service key, waiting for each stage to succeed before the next.
 \end{itemize}
@@ -1528,7 +1553,7 @@ mandatory.
 \textbf{ID} & \textbf{Item} & \textbf{Impact} & \textbf{Mitigation or plan} \\
 \midrule
 \endhead
-R1 & Jobs run inside the API process, not on a durable queue & A restart interrupts ingestion & Interrupted runs are recorded and retryable; a worker can implement the same job ports \\
+R1 & A worker restart interrupts its running job; jobs are not retried automatically & A long import must be resubmitted & Graceful shutdown (60 s) records interrupted runs; imports are idempotent with \texttt{update}; a run recorded but not queued (API crash between the two writes) is failed after 24 hours \\
 R2 & WLU page structure can change & Parsers extract less & Audits record counts; nightly runs surface failures; raw HTML allows re-parsing \\
 R3 & LLM outages or behaviour changes & Degraded answers & Plan validation; explicit error events; evaluation before changes. Retrieval profiles fall back on search failures; answer-model fallback is supported but not configured \\
 R4 & An unavailable robots.txt disallows the host & A crawl can succeed with no pages & Logged; check audits, not only statuses \\

@@ -61,19 +61,22 @@ serializes manual/scheduled runs with `cancel-in-progress: false`.
 
 ## Lifecycle and recovery
 
-Execution uses tasks in the API process, not a durable queue. The task launcher sends
-heartbeats throughout planning, crawling, importing and auditing. Shutdown cancels and
-awaits tasks, records interrupted runs as failed, and marks unfinished batches failed
-for retry. A hard crash is recovered by the periodic zombie sweep after heartbeat expiry
-(default five minutes, checked every two minutes). The sweep includes abandoned queued
-runs and only fails unfinished batches. It does not automatically replay work.
+In production each submitted job is queued (Procrastinate on PostgreSQL) and run by the `worker`
+container, so a backend restart or deploy does not interrupt it and a long import never slows chat
+([architecture](architecture.md#background-jobs)). Runs heartbeat throughout planning, crawling,
+importing and auditing. A worker shutdown lets running jobs finish for up to 60 s, then records them
+as interrupted and marks unfinished batches failed for retry. A hard crash is recovered by the
+periodic zombie sweep: running runs after five minutes without a heartbeat, queued runs after 24 hours
+(checked every two minutes). It does not automatically replay work. The workflow submits one job at a
+time and waits for it, so a nightly run needs at least one worker up; with none, its first job stays
+queued until the polling timeout.
 
 Timing comes from `system.jobs` in YAML. Submission exclusion uses a short
 [PostgreSQL transaction advisory lock](https://www.postgresql.org/docs/16/explicit-locking.html#ADVISORY-LOCKS)
 inside the persistence adapter; no schema migration is required.
 
-The host and its dependencies must be running. Restarts interrupt work; a future durable
-worker would be a separate adapter. Heartbeat recovery is not a fencing mechanism for
+The host, its dependencies and a worker must be running. A worker restart interrupts its running
+job (recorded as failed; resubmit). Heartbeat recovery is not a fencing mechanism for
 arbitrarily paused workers or network partitions. Different job names can still operate
 on related data; the nightly schedule orders its stages, but there is no global ingestion lock.
 

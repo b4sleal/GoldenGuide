@@ -35,7 +35,7 @@ provider definitions instead of copying them.
 
 | File | Contents |
 | --- | --- |
-| `base/system_config.yml` | Logging, OIDC client behaviour (timeouts, clock skew, local dev hosts), job heartbeat and zombie-sweep timing, service clients and their scopes |
+| `base/system_config.yml` | Logging, OIDC client behaviour (timeouts, clock skew, local dev hosts), jobs (`execution`: `in_process` or `worker`; worker concurrency, shutdown grace and parsing processes; heartbeat, zombie-sweep and queued-run timeouts), service clients and their scopes |
 | `base/ai_behavior.yml` | Router LLM and answer LLM prompts and defaults (admins can override at runtime). Each prompt has a `system` part (fixed instructions, cacheable by providers) and a `turn` template (date, context, question) |
 | `base/embedding_service.yml` | Settings for the embedding service process |
 | `catalogs/providers/infra.yml` | PostgreSQL, Redis, Qdrant, MinIO connection definitions (secrets referenced, not stored) |
@@ -48,7 +48,7 @@ provider definitions instead of copying them.
 | `catalogs/profiles/retrieval_profile.yml` | Named bundles of the above plus an LLM and optional fallback profiles |
 | `catalogs/active/infra.yml` | Which store definitions are in use for each role (`db.app`, `cache.app`, ...) |
 | `catalogs/router/router.yml` | Query router settings, e.g. the entity lookup cache TTL (one day) |
-| `catalogs/chat/chat.yml` | Conversation history sent with follow-up questions: `max_turns` (0 disables) and `max_chars_per_message` |
+| `catalogs/chat/chat.yml` | Conversation history sent with follow-up questions: `max_turns` (0 disables) and `max_chars_per_message`; `source_snippet.max_chars`, the preview length on each source card |
 | `catalogs/scraping/websites.yml` | Websites to crawl: seeds, allowed domains, rules |
 | `catalogs/text_enrichment/retrieval_text.yml` | Templates that add context to each chunk before embedding |
 | `catalogs/text_enrichment/wlu_lexicon.yml` | WLU faculties, departments, subjects and their aliases |
@@ -90,6 +90,12 @@ profiles is the intended next step and needs no change outside that router.
 
 Changing a collection's chunking, enrichment or vectors requires bumping its `version` and
 re-indexing; provisioning refuses to run against a collection whose stored version doesn't match.
+`ingest_chunks_per_slice` is not part of that metadata: it only bounds ingestion memory per record
+and can change without re-indexing. The same goes for SPLADE's inference limits in `ml_local.yml`
+(`max_length`, `max_batch_tokens`, `pooling_chunk_size`, `max_concurrent_inferences`, `dtype`);
+startup rejects `max_batch_tokens < max_length`. Changing the SPLADE model or `dtype` changes its
+vectors, so verify with the `tests/eval/splade_equivalence.py` eval or re-index
+([ingestion](ingestion.md#memory-bounds)).
 
 ## Runtime settings
 
@@ -131,3 +137,10 @@ defaults in `docker-compose.yml` or the code. The main groups:
 | Observability | `OTEL_EXPORTER_OTLP_ENDPOINT`, `LOKI_PUSH_URL`, `CONTAINER_LOG_FORMAT`, `GRAFANA_ADMIN_*` |
 | Limits | `*_CPUS`, `*_MEMORY_LIMIT`, `EMBEDDING_THREADS`, `UV_CONCURRENT_*` |
 | Tests | `GOLDENGUIDE_TEST_DATABASE_URL`, `REDIS_TEST_URL`, `QDRANT_TEST_*`, `GOLDENGUIDE_REQUIRE_TEST_SERVICES` |
+
+The backend talks to Qdrant over gRPC by default (`VECTOR_STORE__QDRANT__PREFER_GRPC=true`, port
+`VECTOR_STORE__QDRANT__GRPC_PORT`, default 6334): vectors travel as binary float32 instead of JSON,
+which matters for ColBERT's per-token vectors. The REST port (`..._PORT`, 6333) is still used for
+calls without a gRPC equivalent. Both ports are published on `127.0.0.1` and forwarded over the
+tailnet (`deploy/tailscale/serve.json`); a remote Qdrant needs both reachable, or set
+`PREFER_GRPC=false`. The vector contract tests use gRPC as well (`QDRANT_TEST_GRPC_PORT`, default 6334).

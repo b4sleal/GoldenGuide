@@ -74,6 +74,9 @@ class RAGSource(FrozenAIBehavior):
     title: str
     url: str | None = None
     source_type: str | None = None
+    # Start of the first passage this source contributed, plain text, for the source preview card.
+    # Older saved answers have none.
+    snippet: str | None = None
 
 class ResolvedRAGContext(FrozenAIBehavior):
     """The formal contract between Retrieval and Generation."""
@@ -81,7 +84,9 @@ class ResolvedRAGContext(FrozenAIBehavior):
     sources: list[RAGSource]
     llm_profile: LLMProfile
     profile_name: str
-    links: dict[str, str] = Field(default_factory=dict)
+    # Course code -> official course page, taken from links in the evidence. The context holds plain codes;
+    # the answer links each code afterwards, so the model never sees or copies Markdown links.
+    course_links: dict[str, str] = Field(default_factory=dict)
     # Tables the answer may place with {{TABLE:<table_id>}} markers (application/use_cases/chatbot/evidence_tables.py).
     tables: list[EvidenceTable] = Field(default_factory=list)
     # Semantic search was requested but every retrieval profile failed; the context holds structured records only.

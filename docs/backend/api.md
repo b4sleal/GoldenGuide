@@ -86,7 +86,7 @@ curl -N -H 'Content-Type: application/json' -d '{"query":"When is the last day t
 | `{"type": "text", "text": "..."}` | Answer text, in order |
 | `{"type": "citation", ...}` | Inline citation marker pointing at a source |
 | `{"type": "table", ...}` | A table built from database records (e.g. LORIS sections), at the position the answer placed it |
-| `{"type": "sources", "sources": [...]}` | The source list for the answer, always the last content event |
+| `{"type": "sources", "sources": [...]}` | The source list for the answer (title, URL, type, preview), sent once, before the first `text`, so inline citations can show their sources while the text streams |
 | `{"type": "ok"}` | **Terminal**: the answer is complete |
 | `{"type": "error", "error": {...}}` | **Terminal**: generation failed after the stream started; same envelope as HTTP errors |
 

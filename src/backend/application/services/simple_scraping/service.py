@@ -23,6 +23,7 @@ from backend.application.services.simple_scraping.logging import CrawlProgressLo
 from backend.application.services.simple_scraping.response_processor import CrawlResponseProcessor
 from backend.application.services.simple_scraping.robots import RobotsRules
 from backend.domain.entities.scraping import CrawlMode, ScrapePageCreate, ScrapeStatus, SiteProfile, ScrapePageCacheRead
+from backend.domain.ports.jobs.compute import ComputeExecutor
 from backend.domain.ports.providers.blob import BlobStorage
 from backend.domain.ports.repositories.filters import ScrapePageFilter
 from backend.domain.ports.repositories.school.school_db import SchoolDB
@@ -50,11 +51,13 @@ class AsyncCrawlerRunner:
             self,
             school_db: SchoolDB,
             blob_storage: BlobStorage,
+            compute: ComputeExecutor,
             batch_size: int = 100,
             transport: httpx.AsyncBaseTransport | None = None,  # Tests inject httpx.MockTransport.
     ):
         self.school_db = school_db
         self.blob_storage = blob_storage
+        self.compute = compute
         self.batch_size = batch_size
         self.transport = transport
 
@@ -245,6 +248,7 @@ class AsyncCrawlerRunner:
                 seen_urls=seen_urls,
                 blob_storage=self.blob_storage,
                 is_allowed=is_allowed,
+                compute=self.compute,
             )
 
             flush_lock = asyncio.Lock()

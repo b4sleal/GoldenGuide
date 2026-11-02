@@ -1,7 +1,8 @@
-"""Periodically fail job runs that stopped showing signs of life (see JobRepository.fail_zombie_jobs).
+"""Periodically fail job runs that can no longer finish (see JobRepository.fail_zombie_jobs).
 
-Runs for the life of each API process. With several replicas, each sweeps; that is safe because a
-run is only failed after its heartbeat has been missing for the whole timeout, wherever it runs.
+Runs in whichever process runs jobs: the API with in-process execution, each worker otherwise
+(runtime.py, worker.py). Several sweepers at once are safe: a run is only failed after it has been
+silent (RUNNING) or waiting (QUEUED) for the whole timeout, wherever it runs.
 """
 import asyncio
 
@@ -15,9 +16,17 @@ logger = structlog.get_logger(__name__)
 
 async def sweep_once(app_db: AppDB, settings: JobSettings) -> int:
     async with app_db.start() as repos:
-        failed = await repos.jobs.fail_zombie_jobs(timeout_minutes=settings.zombie_timeout_minutes)
+        failed = await repos.jobs.fail_zombie_jobs(
+            heartbeat_timeout_minutes=settings.zombie_timeout_minutes,
+            queued_timeout_minutes=settings.queued_timeout_minutes,
+        )
     if failed:
-        logger.warning("job_zombies_failed", runs=failed, timeout_minutes=settings.zombie_timeout_minutes)
+        logger.warning(
+            "job_zombies_failed",
+            runs=failed,
+            heartbeat_timeout_minutes=settings.zombie_timeout_minutes,
+            queued_timeout_minutes=settings.queued_timeout_minutes,
+        )
     return failed
 
 

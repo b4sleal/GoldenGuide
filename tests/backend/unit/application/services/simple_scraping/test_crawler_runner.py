@@ -8,6 +8,7 @@ import pytest
 from backend.application.services.simple_scraping.service import AsyncCrawlerRunner
 from backend.domain.entities.scraping import CrawlMode, ScrapeStatus, SiteProfile
 from backend.shared.utils.hashing import sha256_hash
+from tests.backend.unit.application.inline_compute import InlineCompute
 
 HOST = "www.example.edu"
 HREF = re.compile(r'href="([^"]+)"')
@@ -89,7 +90,7 @@ def profile(seeds=(f"{ROOT}/a",), respect_robots_txt=True, **overrides) -> SiteP
 
 async def crawl(site: Site, site_profile: SiteProfile, mode=CrawlMode.FRESH, cached=(), blobs=None, **kwargs):
     school_db = FakeSchoolDB(cached)
-    runner = AsyncCrawlerRunner(school_db, blobs or FakeBlobs(), batch_size=1, transport=httpx.MockTransport(site))
+    runner = AsyncCrawlerRunner(school_db, blobs or FakeBlobs(), InlineCompute(), batch_size=1, transport=httpx.MockTransport(site))
     result = await runner.run_site(site_profile, mode=mode.value, concurrency=2, **kwargs)
     return result, {row.url: row for row in school_db.scraping.saved}
 
@@ -223,7 +224,7 @@ async def test_redirect_hops_count_against_page_limit():
 async def test_a_redirect_to_a_page_crawled_on_its_own_does_not_store_it_twice():
     site = Site({f"{ROOT}/old": httpx.Response(301, headers={"location": "/new"}), f"{ROOT}/new": page()})
     school_db = FakeSchoolDB()
-    runner = AsyncCrawlerRunner(school_db, FakeBlobs(), batch_size=100, transport=httpx.MockTransport(site))
+    runner = AsyncCrawlerRunner(school_db, FakeBlobs(), InlineCompute(), batch_size=100, transport=httpx.MockTransport(site))
 
     await runner.run_site(profile(seeds=(f"{ROOT}/new", f"{ROOT}/old")), concurrency=1)
 
@@ -244,3 +245,15 @@ async def test_after_a_redirect_the_final_urls_cache_decides_the_blob_upload():
     await crawl(site, profile(), mode=CrawlMode.UPDATE, cached=cached, blobs=blobs)
 
     assert f"blobs/{ROOT}/new" in blobs.uploaded
+
+
+async def test_link_extraction_runs_through_the_compute_executor():
+    site = Site({f"{ROOT}/a": page("/b"), f"{ROOT}/b": page()})
+    compute = InlineCompute()
+    runner = AsyncCrawlerRunner(FakeSchoolDB(), FakeBlobs(), compute, batch_size=1, transport=httpx.MockTransport(site))
+
+    await runner.run_site(profile(), mode=CrawlMode.FRESH.value, concurrency=1)
+
+    # One offloaded parse per fetched HTML page; the discovered link was still followed.
+    assert len(compute.calls) == 2
+    assert site.requested == [f"{ROOT}/a", f"{ROOT}/b"]

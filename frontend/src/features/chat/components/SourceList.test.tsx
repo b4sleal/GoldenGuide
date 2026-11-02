@@ -24,25 +24,28 @@ function pointer(element: Element, type: string, clientX: number, pointerType = 
 }
 
 describe("SourceList", () => {
-  it("keeps the backend order, numbering and links, including non-link sources", () => {
+  it("keeps the backend order and links, including non-link sources, without numbers", () => {
     render(<SourceList sources={sources} />);
     const list = screen.getByRole("list", { name: "Source links" });
     const cards = within(list).getAllByRole("listitem");
     expect(cards).toHaveLength(3);
-    expect(cards.map((card) => card.textContent?.[0])).toEqual(["1", "2", "3"]);
+    expect(cards.map((card) => card.textContent)).toEqual([
+      "LORIS - Registrationloris.wlu.ca",
+      "Academic Calendaracademic-calendar.wlu.ca",
+      "Stored source",
+    ]);
     expect(within(cards[0]!).getByRole("link")).toHaveAttribute("href", sources[0]!.url);
     expect(within(cards[0]!).getByRole("link")).toHaveAttribute("target", "_blank");
     expect(within(cards[2]!).queryByRole("link")).not.toBeInTheDocument();
     expect(list).toHaveAttribute("tabindex", "0");
   });
 
-  it("does not merge or renumber source entries in the frontend", () => {
+  it("does not merge source entries in the frontend", () => {
     render(<SourceList sources={[
       { title: "A", url: "https://loris.wlu.ca", source_type: "course_terms" },
       { title: "B", url: "https://loris.wlu.ca", source_type: "course_terms" },
     ]} />);
-    expect(screen.getAllByRole("listitem")).toHaveLength(2);
-    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getAllByRole("listitem").map((item) => item.textContent)).toEqual(["Aloris.wlu.ca", "Bloris.wlu.ca"]);
   });
 
   it("omits the region for empty sources and navigation controls when everything fits", () => {

@@ -13,19 +13,29 @@ from typing import Any
 
 import structlog
 
-from backend.application.use_cases.scraping.common_parsing import clean_text_value, clean_html_to_markdown
-from backend.domain.entities.wlu.lexicon_resolver import WluLexiconResolver
-from backend.application.use_cases.scraping.wlu_registration.parse import (
-    build_course_payload, term_code_to_academic_year, build_course_term_payload, parse_registration_description,
-    parse_requirement_table, has_meeting_faculty
+from backend.application.use_cases.scraping.common_parsing import (
+    clean_html_to_markdown,
+    clean_text_value,
 )
-from backend.application.use_cases.scraping.wlu_registration.scrape import loris_term_blob_key
+from backend.application.use_cases.scraping.wlu_registration.parse import (
+    build_course_payload,
+    build_course_term_payload,
+    has_meeting_faculty,
+    parse_registration_description,
+    parse_requirement_table,
+    term_code_to_academic_year,
+)
+from backend.application.use_cases.scraping.wlu_registration.scrape import (
+    loris_term_blob_key,
+)
 from backend.domain.entities.wlu.course import CourseCreate, CourseLookupRead
+from backend.domain.entities.wlu.lexicon_resolver import WluLexiconResolver
 from backend.domain.entities.wlu.loris_registration import CourseTermCreate
+from backend.domain.ports.jobs.compute import ComputeExecutor
 from backend.domain.ports.providers.blob import BlobStorage
 from backend.domain.ports.repositories.filters import CourseFilter
-from backend.domain.ports.repositories.school.school_db import SchoolDB
 from backend.domain.ports.repositories.school.query_types import CoursePageParams
+from backend.domain.ports.repositories.school.school_db import SchoolDB
 
 logger = structlog.get_logger()
 
@@ -37,10 +47,17 @@ LORIS_BOILERPLATE = [
 
 
 class WLURegistrationPersistence:
-    def __init__(self, school_db: SchoolDB, blob_storage: BlobStorage, lexicon_resolver: WluLexiconResolver):
+    def __init__(
+            self,
+            school_db: SchoolDB,
+            blob_storage: BlobStorage,
+            lexicon_resolver: WluLexiconResolver,
+            compute: ComputeExecutor,
+    ):
         self.school_db = school_db
         self.blob_storage = blob_storage
         self.lexicon_resolver = lexicon_resolver
+        self.compute = compute
 
     async def ingest_from_blob(self, term_code: str) -> dict[str, Any]:
         blob_key = loris_term_blob_key(term_code)
@@ -73,63 +90,10 @@ class WLURegistrationPersistence:
                 f"Please add them to wlu_lexicon.yml and retry the ingestion batch."
             )
 
-        raw_course_fragments: list[CourseCreate] = []
-        pending_term_fragments: list[dict[str, Any]] = []
-
-        for item in raw_data:
-            section = item["section"]
-
-            subject_code = clean_text_value(section.get("subject"))
-            canonical_subject = self.lexicon_resolver.resolve_subject(subject_code) or ""
-
-            restrictions_text = clean_html_to_markdown(
-                item.get("restrictions_html")
-            )
-
-            description_text = clean_html_to_markdown(
-                item.get("description_html")
-            )
-
-            if description_text:
-                for pattern in LORIS_BOILERPLATE:
-                    description_text = re.sub(
-                        pattern, "", description_text
-                    ).strip()
-
-            menu_prereq = parse_requirement_table(
-                item.get("prereq_html"),
-                self.lexicon_resolver,
-            )
-
-            menu_coreq = parse_requirement_table(
-                item.get("coreq_html"),
-                self.lexicon_resolver,
-            )
-
-            description = parse_registration_description(
-                description_text,
-                self.lexicon_resolver,
-                menu_prereq=menu_prereq,
-                menu_coreq=menu_coreq,
-            )
-
-            course_fragment = build_course_payload(
-                section,
-                term_code,
-                canonical_subject,
-            )
-
-            raw_course_fragments.append(course_fragment)
-
-            pending_term_fragments.append({
-                "subject_code": subject_code,
-                "course_number": course_fragment.course_number,
-                "institution": course_fragment.institution,
-                "canonical_subject": canonical_subject,
-                "section": section,
-                "restrictions_text": restrictions_text,
-                "description": description,
-            })
+        # HTML-to-markdown and requirement parsing are CPU-bound: run them off the event loop.
+        raw_course_fragments, pending_term_fragments = await self.compute.run(
+            parse_registration_sections, raw_data, term_code, self.lexicon_resolver,
+        )
 
         governing_year = term_code_to_academic_year(term_code)
         lookup_keys = set((p["subject_code"], p["course_number"], p["institution"]) for p in pending_term_fragments)
@@ -207,3 +171,72 @@ class WLURegistrationPersistence:
             "course_terms_upserted": len(final_term_payloads),
             "unmapped_ghost_courses": unmapped_count,
         }
+
+
+def parse_registration_sections(
+        raw_data: list[dict[str, Any]], term_code: str, lexicon_resolver: WluLexiconResolver,
+) -> tuple[list[CourseCreate], list[dict[str, Any]]]:
+    """LORIS sections -> course fragments and pending course-term data.
+
+    Pure and module-level (not a method), so it can run in another process: no I/O, and the
+    lexicon is read-only.
+    """
+    raw_course_fragments: list[CourseCreate] = []
+    pending_term_fragments: list[dict[str, Any]] = []
+
+    for item in raw_data:
+        section = item["section"]
+
+        subject_code = clean_text_value(section.get("subject"))
+        canonical_subject = lexicon_resolver.resolve_subject(subject_code) or ""
+
+        restrictions_text = clean_html_to_markdown(
+            item.get("restrictions_html")
+        )
+
+        description_text = clean_html_to_markdown(
+            item.get("description_html")
+        )
+
+        if description_text:
+            for pattern in LORIS_BOILERPLATE:
+                description_text = re.sub(
+                    pattern, "", description_text
+                ).strip()
+
+        menu_prereq = parse_requirement_table(
+            item.get("prereq_html"),
+            lexicon_resolver,
+        )
+
+        menu_coreq = parse_requirement_table(
+            item.get("coreq_html"),
+            lexicon_resolver,
+        )
+
+        description = parse_registration_description(
+            description_text,
+            lexicon_resolver,
+            menu_prereq=menu_prereq,
+            menu_coreq=menu_coreq,
+        )
+
+        course_fragment = build_course_payload(
+            section,
+            term_code,
+            canonical_subject,
+        )
+
+        raw_course_fragments.append(course_fragment)
+
+        pending_term_fragments.append({
+            "subject_code": subject_code,
+            "course_number": course_fragment.course_number,
+            "institution": course_fragment.institution,
+            "canonical_subject": canonical_subject,
+            "section": section,
+            "restrictions_text": restrictions_text,
+            "description": description,
+        })
+
+    return raw_course_fragments, pending_term_fragments

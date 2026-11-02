@@ -20,9 +20,11 @@ from backend.application.services.chatbot.retrieval_router import (
 from backend.application.services.chatbot.whole_documents import (
     expand_to_whole_documents,
 )
+from backend.application.use_cases.chatbot.link_resolver import COURSE_CODE_PATTERN
 from backend.application.use_cases.chatbot.source_references import (
     is_registration_source,
     registration_source,
+    source_snippet,
 )
 from backend.application.use_cases.ingestion.upload_doc import document_blob_key
 from backend.domain.entities.ingestion_types import KnowledgeSourceType
@@ -44,10 +46,15 @@ from backend.domain.settings.ai_behavior import (
     RAGSource,
     ResolvedRAGContext,
 )
+from backend.domain.settings.chat import SourceSnippetSettings
 from backend.domain.settings.institution import InstitutionProfile
 from backend.domain.settings.profiles import RetrievalProfile
 
 logger = structlog.get_logger(__name__)
+
+# A stored Markdown link to a source-local placeholder: `[label](@@n@@)`, tolerating escaped parentheses.
+PLACEHOLDER_LINK = re.compile(r"\[([^\]\n]*)\]\s*\\?\(\s*@@(\d+)@@\s*\\?\)")
+COURSE_CODE = re.compile(COURSE_CODE_PATTERN, re.IGNORECASE)
 
 
 class RAGContextResolver:
@@ -63,6 +70,7 @@ class RAGContextResolver:
             reranker_orchestrator: RerankerOrchestrator,
             school_db: SchoolDB,
             institution: InstitutionProfile,
+            snippet_settings: SourceSnippetSettings,
     ):
         self.router = router
         self.embedding = embedding_orchestrator
@@ -72,41 +80,29 @@ class RAGContextResolver:
         self.reranker = reranker_orchestrator
         self.school_db = school_db
         self.registration_url = str(institution.registration_url)
+        self.snippet_max_chars = snippet_settings.max_chars
 
     @classmethod
     def _resolve_evidence_placeholders(
             cls,
             content: str,
             external_links: list[str],
-            registry: dict[str, str],
+            course_links: dict[str, str],
     ) -> str:
-        """Renumber source-local @@n@@ links into request-wide IDs."""
-
-        local_ids: dict[int, str] = {}
+        """Replace stored `[label](@@n@@)` links with their plain label, so the model's context holds no
+        Markdown links to imitate. A course code's link is kept in `course_links` (code -> URL); the
+        answer links every mention of that code afterwards (ChatbotLinkResolver)."""
 
         def replace(match: re.Match) -> str:
-            original_index = int(match.group(1))
-            offset = original_index - 1
+            label, offset = match.group(1), int(match.group(2)) - 1
+            code = label.strip().upper()
+            if COURSE_CODE.fullmatch(code) and 0 <= offset < len(external_links):
+                url = cls._valid_url(external_links[offset])
+                if url:
+                    course_links.setdefault(code, url)
+            return label
 
-            if offset < 0 or offset >= len(external_links):
-                return "]"
-
-            url = cls._valid_url(external_links[offset])
-            if not url:
-                return "]"
-
-            if original_index not in local_ids:
-                global_id = str(len(registry) + 1)
-                local_ids[original_index] = global_id
-                registry[global_id] = url
-
-            return f"](@@{local_ids[original_index]}@@)"
-
-        return re.sub(
-            r"\]\s*\\?\(\s*@@(\d+)@@\s*\\?\)",
-            replace,
-            content,
-        )
+        return PLACEHOLDER_LINK.sub(replace, content)
 
     @staticmethod
     def _valid_url(value: str | None) -> str | None:
@@ -145,15 +141,11 @@ class RAGContextResolver:
 
     @staticmethod
     def _clean_unresolved_links(content: str) -> str:
-        """Leave readable labels when the local link table is absent.
+        """Leave plain labels when the local link table is absent: `[CP164](@@3@@)` becomes `CP164`.
 
-        Never turn @@1@@ into a guessed URL.
+        Never turn @@1@@ into a guessed URL, and never leave `[CP164]`, which the model copies as is.
         """
-        return re.sub(
-            r"\]\(@@\d+@@\)",
-            "]",
-            content or "",
-            )
+        return PLACEHOLDER_LINK.sub(lambda match: match.group(1), content or "")
 
     async def search_candidates(self, question: str, profile: RetrievalProfile) -> list[RetrievedChunk]:
         """First-stage semantic search: embed the question for each vector the collection has, then fuse."""
@@ -212,7 +204,7 @@ class RAGContextResolver:
         primary_profile = self.router.route_question(question)
 
         if not semantic_enabled:
-            context_text, sources, links = await self._prepare_context(
+            context_text, sources, course_links = await self._prepare_context(
                 hits=[],
                 max_chunks=0,
                 factual=factual,
@@ -221,7 +213,7 @@ class RAGContextResolver:
             return ResolvedRAGContext(
                 context_text=context_text,
                 sources=sources,
-                links=links,
+                course_links=course_links,
                 llm_profile=primary_profile.llm,
                 profile_name=primary_profile.name,
             )
@@ -243,7 +235,7 @@ class RAGContextResolver:
                 # Few, small enough pages left: send them whole so lists (deadlines, steps) arrive complete.
                 hits = await expand_to_whole_documents(hits, top_k, profile.vector_retrieval.whole_documents, self.school_db)
 
-                context_text, sources, links = await self._prepare_context(
+                context_text, sources, course_links = await self._prepare_context(
                     hits=hits,
                     max_chunks=top_k,
                     factual=factual,
@@ -252,7 +244,7 @@ class RAGContextResolver:
                 return ResolvedRAGContext(
                     context_text=context_text,
                     sources=sources,
-                    links=links,
+                    course_links=course_links,
                     llm_profile=profile.llm,
                     profile_name=profile.name,
                 )
@@ -272,7 +264,7 @@ class RAGContextResolver:
         )
 
         if factual:
-            context_text, sources, links = await self._prepare_context(
+            context_text, sources, course_links = await self._prepare_context(
                 hits=[],
                 max_chunks=0,
                 factual=factual,
@@ -281,7 +273,7 @@ class RAGContextResolver:
             return ResolvedRAGContext(
                 context_text=context_text,
                 sources=sources,
-                links=links,
+                course_links=course_links,
                 llm_profile=primary_profile.llm,
                 profile_name=primary_profile.name,
                 semantic_failed=True,
@@ -299,7 +291,7 @@ class RAGContextResolver:
     ) -> tuple[str, list[RAGSource], dict[str, str]]:
         blocks: list[str] = []
         sources: list[RAGSource] = []
-        links: dict[str, str] = {}
+        course_links: dict[str, str] = {}
 
         seen_chunks: set[str] = set()
         source_indices: dict[tuple[str, str], int] = {}
@@ -321,7 +313,10 @@ class RAGContextResolver:
 
             seen_chunks.add(chunk_key)
 
-            source = RAGSource(title=title, url=self._valid_url(url), source_type=source_type)
+            source = RAGSource(
+                title=title, url=self._valid_url(url), source_type=source_type,
+                snippet=source_snippet(content, self.snippet_max_chars),
+            )
             registration = is_registration_source(source, self.registration_url)
             # Keep each record's content/title and chunk identity, but share the registration
             # citation before generation. The stream and recorder therefore use the same IDs.
@@ -352,7 +347,7 @@ class RAGContextResolver:
                 content=self._resolve_evidence_placeholders(
                     content=item.content,
                     external_links=item.external_links,
-                    registry=links,
+                    course_links=course_links,
                 ),
                 source_type=source_type,
             )
@@ -400,4 +395,4 @@ class RAGContextResolver:
                 source_type=source_type,
             )
 
-        return "\n\n".join(blocks), sources, links
+        return "\n\n".join(blocks), sources, course_links

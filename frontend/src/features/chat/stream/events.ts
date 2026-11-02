@@ -25,6 +25,8 @@ export const Source = z.object({
   title: z.string(),
   url: z.string().nullish(),
   source_type: z.string().nullish(),
+  /** Start of the first passage the source contributed, for its preview card. Older answers have none. */
+  snippet: z.string().nullish(),
 });
 export type Source = z.infer<typeof Source>;
 

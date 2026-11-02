@@ -15,6 +15,7 @@ catalog:
         remove_selectors: [header, footer]
         excluded_path_patterns: [/news/]   # Skipped for now (news archive); may be added later.
         title_suffix: " | Wilfrid Laurier University"
+        respect_robots_txt: false   # Temporarily disabled for wlu.ca only; re-enable once crawl scope is settled.
 
       students_wlu:
         site_name: students_wlu

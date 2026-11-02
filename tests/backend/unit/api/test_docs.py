@@ -9,10 +9,10 @@ from fastapi.testclient import TestClient
 from backend.api.auth import get_principal
 from backend.api.docs import install_admin_docs
 from backend.api.middleware.security_headers import SecurityHeadersMiddleware
-from backend.domain.entities.auth.principal import Principal, Role
+from backend.domain.entities.auth.principal import Principal, Role, Scope
 
 
-def _app(roles: frozenset[Role] | None) -> FastAPI:
+def _app(roles: frozenset[Role] | None, scopes: frozenset[Scope] = frozenset()) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     install_admin_docs(app)
     app.add_middleware(
@@ -25,7 +25,7 @@ def _app(roles: frozenset[Role] | None) -> FastAPI:
     async def principal():
         if roles is None:
             raise HTTPException(401, "Authentication required")
-        return Principal(subject="test", roles=roles)
+        return Principal(subject="test", roles=roles, scopes=scopes)
 
     app.dependency_overrides[get_principal] = principal
     return app
@@ -56,6 +56,17 @@ def test_admin_can_use_standard_swagger_and_schema():
         schema = client.get("/openapi.json")
         assert schema.status_code == 200
         assert schema.json()["openapi"].startswith("3.")
+
+
+def test_docs_read_client_gets_the_schema_but_not_the_swagger_ui():
+    with TestClient(_app(frozenset(), frozenset({Scope.DOCS_READ}))) as client:
+        assert client.get("/openapi.json").status_code == 200
+        assert client.get("/docs").status_code == 403
+
+
+def test_client_without_docs_read_cannot_read_the_schema():
+    with TestClient(_app(frozenset(), frozenset({Scope.JOBS_READ}))) as client:
+        assert client.get("/openapi.json").status_code == 403
 
 
 class InlineScripts(HTMLParser):

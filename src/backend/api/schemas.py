@@ -4,7 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from backend.domain.entities.conversations import FeedbackRating, FeedbackReason
-from backend.domain.entities.jobs import JobMode, JobStatus
+from backend.domain.entities.jobs import JobMode, JobStatus, JsonObject
 from backend.domain.settings.scraping import Website
 
 
@@ -205,3 +205,5 @@ class JobRunStatus(BaseModel):
     finished_at: datetime | None = None
     last_heartbeat_at: datetime | None = None
     message: str | None = Field(default=None, description="Safe outcome message; internal errors stay in server records.")
+    summary: JsonObject | None = Field(default=None, description="Work counts of a finished one-shot run (e.g. crawl page outcomes).")
+    audit: JsonObject | None = Field(default=None, description="Post-run audit counts, when the job has an auditor.")

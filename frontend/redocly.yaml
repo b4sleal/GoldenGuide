@@ -1,0 +1,8 @@
+# Used by `pnpm gen:api`: /openapi.json needs the docs:read scope, so the local backend is sent
+# the openapi_codegen service key from the environment ("Bearer <key>"); it is never stored here.
+resolve:
+  http:
+    headers:
+      - matches: http://localhost:8082/**
+        name: Authorization
+        envVariable: GOLDENGUIDE_OPENAPI_AUTHORIZATION

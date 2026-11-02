@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from backend.application.use_cases.chatbot.context_resolver import RAGContextResolver
 from backend.application.use_cases.chatbot.formatting import CitationStreamParser
+from backend.application.use_cases.chatbot.link_resolver import ChatbotLinkResolver
 from backend.application.use_cases.chatbot.turn_recorder import TurnRecorder
 from backend.domain.entities.conversations import ChatTurnContext, MessageStatus
 from backend.domain.entities.retrieval import Evidence
@@ -16,6 +17,7 @@ async def sources_for(*records):
     # _prepare_context only uses class-level helpers; no providers are needed to build sources.
     resolver = RAGContextResolver.__new__(RAGContextResolver)
     resolver.registration_url = REGISTRATION_URL
+    resolver.snippet_max_chars = 200
     _, sources, _ = await resolver._prepare_context(hits=[], max_chunks=0, factual=list(records))
     return sources
 
@@ -56,8 +58,49 @@ def test_unresolved_links_become_plain_text():
     text = "Prerequisite: [CP164](@@3@@) or [GENG131](@@4@@)."
 
     assert RAGContextResolver._clean_unresolved_links(text) == (
-        "Prerequisite: [CP164] or [GENG131]."
+        "Prerequisite: CP164 or GENG131."
     )
+
+
+CP164_URL = "https://academic-calendar.wlu.ca/course.php?c=164"
+GENG135_URL = "https://academic-calendar.wlu.ca/course.php?c=135"
+
+
+def test_the_model_sees_plain_labels_and_course_links_are_collected_separately():
+    course_links: dict[str, str] = {}
+    text = "Prerequisite: [CP164](@@1@@) or [GENG135](@@2@@) or [CP104](@@9@@); see [the Registrar](@@3@@)."
+    resolved = RAGContextResolver._resolve_evidence_placeholders(
+        text, [CP164_URL, GENG135_URL, "https://www.wlu.ca/registrar"], course_links,
+    )
+
+    assert resolved == "Prerequisite: CP164 or GENG135 or CP104; see the Registrar."
+    # Only course codes with a usable URL are linked later; other labels stay plain text.
+    assert course_links == {"CP164": CP164_URL, "GENG135": GENG135_URL}
+
+
+def resolved_answer(*chunks: str, course_links: dict[str, str] | None = None) -> str:
+    resolver = ChatbotLinkResolver()
+    resolver.register_course_links(course_links or {})
+    events = [event for chunk in chunks for event in resolver.feed(chunk)] + resolver.flush()
+    return "".join(event["text"] for event in events)
+
+
+def test_course_codes_in_the_answer_are_linked_including_four_letter_subjects():
+    links = {"CP164": CP164_URL, "GENG135": GENG135_URL}
+
+    assert resolved_answer("Take CP1", "64 or GENG", "135.", course_links=links) == (
+        f"Take [CP164]({CP164_URL}) or [GENG135]({GENG135_URL})."
+    )
+
+
+def test_bracketed_codes_and_stray_placeholders_never_reach_students_as_brackets():
+    links = {"GENG135": GENG135_URL}
+
+    # The model sometimes brackets a code, or copies a placeholder link it was never given.
+    assert resolved_answer("Requires [CP104] or [GENG135].", course_links=links) == (
+        f"Requires CP104 or [GENG135]({GENG135_URL})."
+    )
+    assert resolved_answer("See [CP104](@@4@@).") == "See CP104."
 
 
 def test_invalid_source_url_is_rejected():
@@ -69,6 +112,7 @@ def test_invalid_source_url_is_rejected():
 async def test_registration_references_merge_before_generation_and_persistence_without_losing_evidence():
     resolver = RAGContextResolver.__new__(RAGContextResolver)
     resolver.registration_url = REGISTRATION_URL
+    resolver.snippet_max_chars = 200
     calendar_url = "https://academic-calendar.wlu.ca/cp264"
     records = [
         Evidence(source_id="course_term:1", title="CP264 section A", content="CRN: 100", url=REGISTRATION_URL),

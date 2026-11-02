@@ -10,6 +10,7 @@ import { STORED_STATUS_NOTICES, SUGGESTED_QUESTIONS } from "../labels";
 import { storedAnswerContent } from "../stream/history";
 import { AnswerActions } from "./AnswerActions";
 import { AnswerBlocks } from "./AnswerBlocks";
+import { AnswerSourcesProvider } from "./AnswerSourcesProvider";
 import { AnswerView } from "./AnswerView";
 import { Composer } from "./Composer";
 import { Notice } from "./Notice";
@@ -55,16 +56,18 @@ function StoredHistory({ conversationId }: { conversationId: string }) {
     const notice = STORED_STATUS_NOTICES[message.status];
     const answer = storedAnswerContent(message);
     return (
-      <article key={message.id} aria-label="GoldenGuide answer" className="space-y-3">
-        {answer.blocks.length > 0 && (
-          <div className="answer-prose">
-            <AnswerBlocks blocks={answer.blocks} />
-          </div>
-        )}
-        {notice && <Notice message={notice} />}
-        <SourceList sources={answer.sources} />
-        <AnswerActions messageId={message.id} blocks={answer.blocks} sources={answer.sources} />
-      </article>
+      <AnswerSourcesProvider key={message.id} sources={answer.sources}>
+        <article aria-label="GoldenGuide answer" className="space-y-3">
+          {answer.blocks.length > 0 && (
+            <div className="answer-prose">
+              <AnswerBlocks blocks={answer.blocks} />
+            </div>
+          )}
+          {notice && <Notice message={notice} />}
+          <SourceList sources={answer.sources} />
+          <AnswerActions messageId={message.id} blocks={answer.blocks} sources={answer.sources} />
+        </article>
+      </AnswerSourcesProvider>
     );
   });
 }

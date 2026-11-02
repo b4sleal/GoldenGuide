@@ -11,6 +11,7 @@ import httpx
 
 from backend.application.services.simple_scraping.logging import CrawlStats
 from backend.domain.entities.scraping import ScrapePageCreate, ScrapeStatus, SiteProfile, ScrapePageCacheRead
+from backend.domain.ports.jobs.compute import ComputeExecutor
 from backend.domain.ports.providers.blob import BlobStorage
 from backend.shared.utils.hashing import sha256_hash
 
@@ -23,20 +24,22 @@ class CrawlResponseProcessor:
             seen_urls: set[str],
             blob_storage: BlobStorage,
             is_allowed: Callable[[str], bool],
+            compute: ComputeExecutor,
     ):
         self.profile = profile
         self.stats = stats
         self.seen_urls = seen_urls
         self.blob_storage = blob_storage
+        self.compute = compute
         # Profile rules plus robots.txt: the single gate for every URL the crawl may request.
         self.is_allowed = is_allowed
 
-    def _discover_links(self, html: str, url: str) -> list[str]:
-        """Allowed links on the page not yet seen by the crawl, normalized; marks them seen."""
+    def _discover_links(self, links: list[str]) -> list[str]:
+        """Allowed links not yet seen by the crawl, normalized; marks them seen (on the loop thread)."""
         discovered_links: list[str] = []
         local_seen_links: set[str] = set()
 
-        for link in self.profile.extract_links(html, url):
+        for link in links:
             normalized_link = self.profile.normalize_url(link)
 
             if not normalized_link:
@@ -96,7 +99,9 @@ class CrawlResponseProcessor:
                 error=f"non-html content type: {content_type}",
             )
 
-        discovered_links = self._discover_links(response.text, url)
+        # HTML parsing is CPU-bound: off the event loop. Shared crawl state is updated back on the loop.
+        links = await self.compute.run(self.profile.extract_links, response.text, url)
+        discovered_links = self._discover_links(links)
 
         html_bytes = response.content
         new_content_hash = sha256_hash(html_bytes.decode("utf-8", errors="ignore"))

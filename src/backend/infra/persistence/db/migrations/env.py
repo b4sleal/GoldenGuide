@@ -36,8 +36,8 @@ def _database_url() -> URL:
 
     # CLI path: load the same configuration the app uses. Imported here so programmatic callers,
     # which always pass a URL, never need the full config tree.
-    from goldenguide_common.config.loader import ConfigLoader
     from goldenguide_common.config.env_reader import EnvSecretReader
+    from goldenguide_common.config.loader import ConfigLoader
 
     # The CLI has no structured logging configured; make Alembic's progress lines visible.
     if not logging.getLogger().handlers:
@@ -47,11 +47,21 @@ def _database_url() -> URL:
     return migration_database_url(dict(app_config.catalog.active.db))
 
 
+# Procrastinate's job-queue tables (migration 0005) are created from its own SQL, not from our models.
+_EXTERNAL_TABLE_PREFIX = "procrastinate_"
+
+
+def _include_name(name: str | None, type_: str, parent_names: object) -> bool:
+    """Leave tables we do not model out of autogenerate/check, so they are not reported as removed."""
+    return not (type_ == "table" and name is not None and name.startswith(_EXTERNAL_TABLE_PREFIX))
+
+
 def _configure_context(**kwargs) -> None:
     context.configure(
         target_metadata=target_metadata,
         # Detect column type changes too (e.g. String(64) -> String(128)), not just added/removed columns.
         compare_type=True,
+        include_name=_include_name,
         **kwargs,
     )
 

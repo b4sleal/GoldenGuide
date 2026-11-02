@@ -6,7 +6,7 @@ import { Markdown } from "./Markdown";
 export function AnswerBlocks({ blocks }: { blocks: readonly AnswerBlock[] }) {
   return blocks.map((block, index) =>
     block.kind === "markdown" ? (
-      <Markdown key={index} markdown={block.markdown} />
+      <Markdown key={index} markdown={block.markdown} idPrefix={String(index)} />
     ) : (
       <EvidenceTable key={index} table={block.table} />
     ),

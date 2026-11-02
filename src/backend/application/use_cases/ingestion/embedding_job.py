@@ -58,9 +58,14 @@ class EmbeddingJob:
         self.knowledge_service = knowledge_service
         self.source = source
 
+    @classmethod
+    def job_name_for(cls, source: VectorSource) -> str:
+        """The run name (and duplicate-run lock key) of the embedding job for `source`."""
+        return f"{cls.JOB_NAME}:{source.value}"
+
     @property
     def job_name(self) -> str:
-        return f"{self.JOB_NAME}:{self.source.name.value}"
+        return self.job_name_for(self.source.name)
 
     async def run(self, *, run_id: int, mode: JobMode, batch_size: int, max_concurrent_batches: int) -> dict:
         started_at = datetime.now(timezone.utc)

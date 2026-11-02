@@ -11,12 +11,25 @@ system:
     clock_skew_seconds: 60
     # Keep signature verification restricted to the existing algorithm.
     id_token_algorithms: [RS256]
-  # Background jobs run inside the API process. While one runs it refreshes a heartbeat; a sweep
-  # fails runs with no heartbeat (or, never started, no activity) for zombie_timeout_minutes, which
-  # happens when the process restarts or crashes mid-job.
+  # Background jobs (crawls, imports, indexing). While one runs it refreshes a heartbeat; a sweep fails
+  # running runs with no heartbeat for zombie_timeout_minutes (their process restarted or crashed
+  # mid-job) and queued runs never picked up within queued_timeout_minutes.
   jobs:
+    # in_process: jobs run inside the API (development). worker: queued and run by the `worker`
+    # container (docs/backend/architecture.md#background-jobs); staging/production should use worker.
+    execution: ${secrets:JOBS__EXECUTION,in_process}
+    worker:
+      concurrency: 1
+      # Must stay below the compose worker's stop_grace_period, or Docker kills jobs mid-shutdown.
+      shutdown_graceful_timeout_seconds: 60
+      db_pool_max_size: 4
+      # Parsing runs in this many child processes, in parallel. Match the worker's CPUs (WORKER_CPUS,
+      # 2.0 by default); each child also uses memory (WORKER_MEMORY_LIMIT, 2g by default).
+      compute_processes: 2
     heartbeat_seconds: 30
     zombie_timeout_minutes: 5
+    # Runs may wait in a worker queue behind long jobs; only a run never picked up in a day is failed.
+    queued_timeout_minutes: 1440
     zombie_sweep_seconds: 120
   # Machine callers that authenticate with "Authorization: Bearer <key>" instead of signing in.
   # Grant each only the scopes it needs. Key hashes come from secrets (never the keys themselves);
@@ -29,3 +42,9 @@ system:
       key_hashes:
         - ${secrets:SERVICE_CLIENT__GITHUB_ACTIONS_NIGHTLY__KEY_HASH}
         - ${secrets:SERVICE_CLIENT__GITHUB_ACTIONS_NIGHTLY__PREVIOUS_KEY_HASH}
+    # Frontend type generation (pnpm gen:api) reads /openapi.json. Development only: leave unset elsewhere.
+    openapi_codegen:
+      scopes: [docs:read]
+      key_hashes:
+        - ${secrets:SERVICE_CLIENT__OPENAPI_CODEGEN__KEY_HASH}
+        - ${secrets:SERVICE_CLIENT__OPENAPI_CODEGEN__PREVIOUS_KEY_HASH}

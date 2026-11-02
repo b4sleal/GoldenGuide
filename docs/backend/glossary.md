@@ -33,6 +33,7 @@
 | Term | Meaning |
 | --- | --- |
 | **Job run / batch** | A tracked unit of ingestion work and its pieces. Modes: `fresh` (everything), `update` (what changed), `retry` (what failed) |
+| **Worker** | The container that runs queued jobs (Procrastinate queue on PostgreSQL), separate from the API so jobs never slow chat |
 | **Provision** | The one-shot job that applies database migrations and creates buckets and vector collections before the API starts |
 | **Compose profile** | A label that selects which containers a Compose command starts (for example `all`, `all-dev`, `embedding-gpu`) |
 | **Compose project** | The prefix Compose puts on containers, networks and volumes. Each environment has its own, which keeps their data apart |

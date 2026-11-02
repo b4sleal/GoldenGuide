@@ -59,6 +59,8 @@ class VectorCollectionSettings(FrozenProfile):
     version: int = 1
     key: str
     chunking: ChunkingSettings
+    # Chunks embedded and written per upsert: bounds ingestion memory per page, whatever its size.
+    ingest_chunks_per_slice: int = Field(gt=0)
     text_enrichment: RetrievalTextProfile
     vectors: VectorCollectionVectors
 

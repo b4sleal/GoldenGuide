@@ -144,7 +144,7 @@ class FakeRetrieval:
 
     async def resolve_context(self, question, recorder, earlier, top_k):
         return ResolvedRAGContext.model_construct(
-            context_text="records", sources=[], links={}, llm_profile=None, profile_name="t", tables=[self.table],
+            context_text="records", sources=[], course_links={}, llm_profile=None, profile_name="t", tables=[self.table],
         )
 
 
@@ -176,17 +176,23 @@ async def test_model_placed_table_streams_in_place():
     types = await stream_types(chatbot(["CP220 has 2 sections:\n{{TAB", "LE:1}}\nSection A is open."]))
     assert types[types.index("table") - 1] == "text"            # text before the table
     assert "text" in types[types.index("table") + 1:]           # text continues after it
-    assert types[-1] == "sources" and types.count("table") == 1
+    assert types.count("table") == 1
 
 
-async def test_unplaced_table_is_appended_before_sources():
+async def test_unplaced_table_is_appended_after_the_text():
     types = await stream_types(chatbot(["CP220 has 2 sections in Winter 2027."]))
-    assert types[-2:] == ["table", "sources"]
+    assert types[-2:] == ["text", "table"]
+
+
+async def test_sources_arrive_once_before_the_first_text_so_citation_chips_can_show_them():
+    types = await stream_types(chatbot(["CP220 requires CP104 [Source 1]."]))
+    assert types.count("sources") == 1
+    assert types.index("sources") < types.index("text")
 
 
 async def test_unplaced_automatic_table_is_not_appended():
     types = await stream_types(chatbot(["CP220 requires CP104."], table=AUTOMATIC_TABLE))
-    assert "table" not in types and types[-1] == "sources"
+    assert "table" not in types and types[-1] == "text"
 
 
 async def test_placed_table_and_surrounding_text_are_recorded_after_marker_resolution():

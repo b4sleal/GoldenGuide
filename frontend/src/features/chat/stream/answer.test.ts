@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { type Answer, applyEvent, CITATION_TITLE, endWithoutTerminal, pendingAnswer } from "./answer";
+import { type Answer, applyEvent, endWithoutTerminal, pendingAnswer } from "./answer";
+import { CITATION_TITLE } from "./citations";
 import type { StreamEvent } from "./events";
 
 const apply = (...events: StreamEvent[]): Answer => events.reduce(applyEvent, pendingAnswer);
@@ -43,14 +44,14 @@ describe("answer", () => {
     expect(endWithoutTerminal(done, false)).toBe(done);
   });
 
-  it("inlines citations as marked links, and bare numbers without a URL", () => {
+  it("inlines each citation as one marked link carrying all its source numbers", () => {
     const answer = apply(
       { type: "text", text: "Needs CP164" },
       { type: "citation", source_nums: [1, 2], urls: ["https://wlu.ca/a", null] },
       { type: "text", text: "." },
     );
     expect(answer.blocks).toEqual([
-      { kind: "markdown", markdown: `Needs CP164[1](<https://wlu.ca/a> "${CITATION_TITLE}")[2].` },
+      { kind: "markdown", markdown: `Needs CP164[1,2](#gg-cite-1-2 "${CITATION_TITLE}").` },
     ]);
   });
 

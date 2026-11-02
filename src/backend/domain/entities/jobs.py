@@ -56,6 +56,21 @@ class JobRunField(StrEnum):
     UPDATED_AT = "updated_at"
 
 
+class JobFailureReason(StrEnum):
+    """`error_type` recorded on batches when a run ends without recording its own outcome."""
+    INTERRUPTED = "Interrupted"           # Cancelled, e.g. by process shutdown.
+    MISSING_OUTCOME = "MissingOutcome"    # The job returned without a final status.
+    EXECUTION_ERROR = "ExecutionError"    # The job raised.
+    INVALID_REQUEST = "InvalidRequest"    # The run's stored request is missing or unreadable.
+
+
+class JobRunMetadataKey(StrEnum):
+    """Keys of a run's metadata_json read outside the code that writes them."""
+    SUMMARY = "summary"      # Work counts of a finished run (reported by GET /admin/jobs/{id}).
+    AUDIT = "audit"          # Post-run audit counts (reported by GET /admin/jobs/{id}).
+    REQUEST = "request"      # The submitted JobRequest (job_requests.py); internal, never reported.
+
+
 class JobBatchField(StrEnum):
     ID = "id"
     RUN_ID = "run_id"

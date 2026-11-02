@@ -82,7 +82,9 @@ class AppVectorStore:
             timestamp_field=timestamp_field,
             before=before,
         )
-        logger.info("qdrant_stale_points_deleted", collection=name, filters=filters, before=before.isoformat(), deleted=deleted)
+        # Called per record during embedding, so a no-op is debug; an actual deletion stays visible.
+        log = logger.info if deleted else logger.debug
+        log("qdrant_stale_points_deleted", collection=name, filters=filters, before=before.isoformat(), deleted=deleted)
         return deleted
 
     async def search_by_filter(

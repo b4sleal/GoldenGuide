@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 from typing import cast
 
 from pydantic import BaseModel
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import InstrumentedAttribute
@@ -146,18 +146,28 @@ class SqlJobRepository:
         await self.session.execute(stmt)
         await self.session.flush()
 
-    async def fail_zombie_jobs(self, timeout_minutes: int = 5) -> int:
-        """Fail unfinished runs with no sign of life (heartbeat, or creation if none) within the timeout.
+    async def fail_zombie_jobs(self, *, heartbeat_timeout_minutes: int, queued_timeout_minutes: int) -> int:
+        """Fail unfinished runs that can no longer finish.
 
-        QUEUED runs count too: a process that died between recording and starting a run would
-        otherwise leave it QUEUED forever, blocking new runs of that job.
+        - RUNNING: no heartbeat (or, before the first one, no start) within `heartbeat_timeout_minutes`;
+          the process running it died.
+        - QUEUED: waiting longer than `queued_timeout_minutes`. Runs legitimately wait in a worker queue
+          behind other jobs, so this limit is much longer; it still catches a run recorded by a process
+          that died before queueing it, which would otherwise block new runs of that job forever.
         """
-        cutoff = datetime.now(UTC) - timedelta(minutes=timeout_minutes)
+        now = datetime.now(UTC)
+        heartbeat_cutoff = now - timedelta(minutes=heartbeat_timeout_minutes)
+        queued_cutoff = now - timedelta(minutes=queued_timeout_minutes)
 
         # Claim stale runs atomically: concurrent heartbeats/completions recheck this predicate.
         dead_runs_stmt = update(JobRun).where(
-            JobRun.status.in_([JobStatus.RUNNING, JobStatus.QUEUED]),
-            func.coalesce(JobRun.last_heartbeat_at, JobRun.created_at) < cutoff,
+            or_(
+                and_(
+                    JobRun.status == JobStatus.RUNNING,
+                    func.coalesce(JobRun.last_heartbeat_at, JobRun.created_at) < heartbeat_cutoff,
+                ),
+                and_(JobRun.status == JobStatus.QUEUED, JobRun.created_at < queued_cutoff),
+            ),
         ).values(status=JobStatus.FAILED, finished_at=func.now()).returning(JobRun.id)
 
         result = await self.session.execute(dead_runs_stmt)
@@ -174,7 +184,10 @@ class SqlJobRepository:
             .values(
                 status=JobBatchStatus.FAILED,
                 error_type="HeartbeatTimeout",
-                error_message=f"Worker stopped responding for >{timeout_minutes} minutes.",
+                error_message=(
+                    f"No heartbeat for >{heartbeat_timeout_minutes} minutes, "
+                    f"or queued for >{queued_timeout_minutes} minutes."
+                ),
                 finished_at=func.now()
             )
         )

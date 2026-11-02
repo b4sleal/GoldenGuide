@@ -2,7 +2,6 @@
 .env.*
 !.env.*.example
 
-
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -10,8 +9,12 @@ __pycache__/
 .coverage*
 htmlcov/
 .mcp.json
+
 /docs/agents
 /docs/commands
+/docs/backend/plans
+/docs/frontend/plans
+
 /.idea/
 /.venv/
 /.vscode/
@@ -19,3 +22,5 @@ htmlcov/
 /.codex/
 /.claude/
 /.multiagents/
+
+

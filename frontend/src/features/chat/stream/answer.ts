@@ -2,6 +2,7 @@
  * One assistant answer, built event by event. Pure functions so every terminal case is unit tested
  * without a network or React.
  */
+import { citationMarkdown } from "./citations";
 import type { ApiErrorBody, Source, StatusEvent, StreamEvent, TableEvent } from "./events";
 
 /**
@@ -44,7 +45,7 @@ export function applyEvent(answer: Answer, event: StreamEvent): Answer {
     case "text":
       return { ...answer, phase: "streaming", blocks: appendMarkdown(answer.blocks, event.text) };
     case "citation":
-      return { ...answer, phase: "streaming", blocks: appendMarkdown(answer.blocks, citationMarkdown(event)) };
+      return { ...answer, phase: "streaming", blocks: appendMarkdown(answer.blocks, citationMarkdown(event.source_nums)) };
     case "table": {
       const { type: _type, ...table } = event;
       return { ...answer, phase: "streaming", blocks: [...answer.blocks, { kind: "table", table }] };
@@ -75,17 +76,4 @@ function appendMarkdown(blocks: AnswerBlock[], text: string): AnswerBlock[] {
     return [...blocks.slice(0, -1), { kind: "markdown", markdown: last.markdown + text }];
   }
   return [...blocks, { kind: "markdown", markdown: text }];
-}
-
-/** Marks citation links so the Markdown renderer shows them as source chips, not ordinary links. */
-export const CITATION_TITLE = "gg-citation";
-
-/** Inline citation as Markdown: a link per source number, or the bare number when it has no URL. */
-function citationMarkdown(event: Extract<StreamEvent, { type: "citation" }>): string {
-  return event.source_nums
-    .map((num, index) => {
-      const url = event.urls[index];
-      return url ? `[${num}](<${url.replace(/[<>]/g, encodeURIComponent)}> "${CITATION_TITLE}")` : `[${num}]`;
-    })
-    .join("");
 }

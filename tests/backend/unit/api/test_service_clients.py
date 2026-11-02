@@ -59,11 +59,15 @@ def test_yaml_client_is_disabled_until_its_hash_secret_is_set():
     nightly = system.service_clients["github_actions_nightly"]
     assert nightly.key_hashes == ()
     assert nightly.scopes == {Scope.SOURCES_COLLECT, Scope.INDEXING_SYNC, Scope.JOBS_READ}
+    codegen = system.service_clients["openapi_codegen"]
+    assert codegen.key_hashes == ()
+    assert codegen.scopes == {Scope.DOCS_READ}  # Schema only: it can run no admin route.
 
 
-def test_key_tool_names_the_secret_the_yaml_reads():
+@pytest.mark.parametrize("client", ["github_actions_nightly", "openapi_codegen"])
+def test_key_tool_names_the_secret_the_yaml_reads(client):
     yaml = (Path(__file__).parents[4] / "configs/base/system_config.yml").read_text(encoding="utf-8")
-    assert f"${{secrets:{env_name('github_actions_nightly')}}}" in yaml
+    assert f"${{secrets:{env_name(client)}}}" in yaml
 
 
 # ---- authentication -------------------------------------------------------------------------------

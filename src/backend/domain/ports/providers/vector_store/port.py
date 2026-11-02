@@ -1,9 +1,12 @@
 """Vector store port (Qdrant today): collections, upsert/delete, hybrid search and filter-based cleanup."""
+from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, Protocol
 
 from backend.domain.ports.providers.vector_store.vector_models import (
     CollectionMetadata,
+    PayloadIndexKind,
+    VectorPayloadField,
     RetrievedChunk,
     VectorPoint,
 )
@@ -69,4 +72,13 @@ class ManagedVectorStore(VectorStore, Protocol):
             config: VectorCollectionSettings,
             metadata: CollectionMetadata
     ) -> str:
+        ...
+
+    async def ensure_payload_indexes(
+            self,
+            name: str,
+            fields: Mapping[VectorPayloadField, PayloadIndexKind],
+    ) -> list[VectorPayloadField]:
+        """Index each of `fields` that is not indexed yet and return those created. Idempotent; a field
+        already indexed with a different kind raises instead of replacing that index."""
         ...

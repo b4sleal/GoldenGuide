@@ -6,6 +6,8 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 import goldenguide_common.contracts.embedding_api as Schemas
 from embedding_service.api.auth import build_api_key_verifier
+from embedding_service.api.limits import build_text_limit
+from embedding_service.api.memory import MemoryObservationMiddleware
 from embedding_service.core.registry import build_model_registry
 from embedding_service.models.embedding.service import LocalEmbeddingService
 from embedding_service.models.reranker.service import LocalRerankerService
@@ -35,11 +37,16 @@ FastAPIInstrumentor.instrument_app(app, excluded_urls="/health")
 
 # Step 3: load configuration and only the models for this runtime (cpu or gpu).
 config = ConfigLoader(reader).load_local_embedding_config()
+app.add_middleware(
+    MemoryObservationMiddleware,
+    info_interval_seconds=config.settings.memory_log_interval_seconds,
+)
 runtime = config.settings.runtime
 if runtime == "gpu":
     ort.preload_dlls()
 
 verify_api_key = build_api_key_verifier(config.settings.api_key.get_secret_value())
+enforce_text_limit = build_text_limit(config.settings.max_texts_per_request)
 
 embeddings = build_model_registry({ # Get only CPU or GPU models
     name: settings
@@ -90,6 +97,7 @@ async def embed_query(request: Schemas.EmbedQueryRequest):
 async def embed_documents(request: Schemas.EmbedDocumentsRequest):
     """Generate dense or multi-vector representations for documents."""
 
+    enforce_text_limit(request.texts)
     vectors = await embedding_service.embed_documents(request.model_key, request.texts)
     logger.info("embedding.documents_embedded", model=request.model_key, texts=len(request.texts))
     return Schemas.EmbedResponse(vectors=vectors)
@@ -108,6 +116,7 @@ async def sparse_query(request: Schemas.SparseQueryRequest):
 async def sparse_documents(request: Schemas.SparseDocumentsRequest):
     """Generate sparse vectors for documents in input order."""
 
+    enforce_text_limit(request.texts)
     result = await vectorizer_service.vectorize_documents(model_key=request.model_key, texts=request.texts)
     logger.info("embedding.documents_vectorized", model=request.model_key, texts=len(request.texts))
     return Schemas.SparseDocumentsResponse(vectors=result)

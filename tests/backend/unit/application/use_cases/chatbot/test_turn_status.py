@@ -32,7 +32,7 @@ class Retrieval:
         if self.failure:
             raise self.failure
         return ResolvedRAGContext.model_construct(
-            context_text="records", sources=[], links={}, llm_profile=None, profile_name="t", tables=[],
+            context_text="records", sources=[], course_links={}, llm_profile=None, profile_name="t", tables=[],
         )
 
 
@@ -68,7 +68,9 @@ async def test_statuses_stream_in_order_before_the_answer_text():
         {"type": "status", "stage": "writing"},
     ]
     first_text = next(index for index, event in enumerate(streamed) if event["type"] == "text")
-    assert all(event["type"] == "status" for event in streamed[:first_text])
+    # Only progress and the source list (sent early so citation chips can show it) precede the text.
+    before_text = [event["type"] for event in streamed[:first_text]]
+    assert set(before_text) == {"status", "sources"} and before_text.count("sources") == 1
 
 
 async def test_retrieval_failure_still_raises_after_its_progress():

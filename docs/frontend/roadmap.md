@@ -6,6 +6,9 @@ choices in the log instead of deleting them.
 
 ## Committed
 
+0. **Inline sources and citation support** (phase 1 built 2026-11-02; phase 2 next): Gemini-style inline chips with a
+   hover card (site, title, snippet), sentence-level highlighting backed by reranker support scores,
+   and a bottom list linked to the chips. Plan: [source-citations-plan.md](plans/source-citations-plan.md).
 1. **Evidence panel.** Clicking a citation opens the source in a right-hand panel (full screen with a
    back button on phones): the WLU page, the cited excerpt, an **Academic Calendar vs LORIS** badge,
    the effective term, and an "open on wlu.ca" link.
@@ -56,6 +59,16 @@ shortcuts.
 
 ## Decision log
 
+- **2026-11-02:** One highlight at a time: hovering a chip highlights nothing; a source in its card
+  highlights the citation's text; a source in the bottom list highlights only the chips citing it.
+  The first version (chip hover lit text and bottom-list entries; bottom-list hover lit text too) was
+  too busy to read.
+- **2026-11-02:** Sources move to Gemini-style inline chips with a hover card; inline numbers go away
+  and repeated citations keep their chips. The bottom list stays, unnumbered, and highlights the chips
+  that cite a hovered source. Highlights are sentence-level: the model's citations set segments and
+  candidate sources, then the cross-encoder reranker decides which sentences each source supports
+  (structured records skip scoring and keep the whole segment). Model-marked spans were rejected as a
+  fragile streaming format that would still need checking. Plan: [source-citations-plan.md](plans/source-citations-plan.md).
 - **2026-11-01:** Frontend docs split into architecture (built), ux (interaction design) and this
   roadmap; the planning notebook `decisions.md` was retired.
 - **2026-11-01:** Sources use one horizontally scrollable row with hidden scrollbars, native touch

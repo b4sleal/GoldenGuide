@@ -1,8 +1,10 @@
 """Embed one knowledge record (course, course term, page or document) into its vector collection(s).
 
 Text: YAML templates (text_enrichment) render a header/prefix, the body is split into chunks, and each
-chunk is embedded with every vector type the collection has (dense, sparse, multi-vector). A record's
-old points are deleted only after all new vectors were generated, so a failure keeps the old version.
+chunk is embedded with every vector type the collection has (dense, sparse, multi-vector). Chunks are
+embedded and written in slices, so memory per record is bounded by the slice size, not the record size.
+A record's earlier points are deleted only after every slice was written; after a failure the old points
+remain (possibly next to some new ones) and the next successful run removes them.
 """
 from datetime import datetime, timezone
 from string import Formatter
@@ -137,40 +139,59 @@ class KnowledgeIngestor:
                 for chunk in raw_chunks
             ]
 
-        dense_vectors = None
-        sparse_vectors = None
-        multi_vectors = None
-
-        if profile.vectors.dense is not None:
-            dense_vectors = await self.embedding.embed_documents(chunks, profile=profile.vectors.dense.embedding)
-        if profile.vectors.sparse is not None:
-            sparse_vectors = await self.sparse.vectorize_documents(chunks, profile=profile.vectors.sparse.vectorizer)
-        if profile.vectors.multi_vector is not None:
-            multi_vectors = await self.embedding.embed_documents(chunks, profile=profile.vectors.multi_vector.embedding)
-
-        now = datetime.now(timezone.utc).isoformat()
+        run_started = datetime.now(timezone.utc)
+        now = run_started.isoformat()
         base_payload = {
             **payload.model_dump(exclude={"content"}, exclude_none=True, mode="json"),
             VectorPayloadField.CREATED_AT: await self._created_at(collection_name, payload.source_id, now),
             VectorPayloadField.UPDATED_AT: now,
         }
-        points = [
+        slice_size = profile.ingest_chunks_per_slice
+        for start in range(0, len(chunks), slice_size):
+            points = await self._embed_slice(
+                profile, payload.source_id, chunks[start:start + slice_size], start, base_payload,
+            )
+            await self.vector_store.upsert(name=collection_name, points=points)
+
+        # Only after every slice is written: drop this record's points from earlier runs (changed or
+        # removed chunks; unchanged chunks share their id and were overwritten). A failed slice skips
+        # this, so old points stay next to the slices already written until the next successful run.
+        await self.vector_store.delete_older_than(
+            name=collection_name,
+            filters={VectorPayloadField.SOURCE_ID: payload.source_id},
+            timestamp_field=VectorPayloadField.UPDATED_AT,
+            before=run_started,
+        )
+        # Per record, so debug level: the embedding job logs progress per batch at info.
+        logger.debug("ingestion_complete", source_id=payload.source_id, chunks=len(chunks), collection_name=collection_name)
+        return {"skipped": 0}
+
+    async def _embed_slice(
+            self,
+            profile: VectorCollectionSettings,
+            source_id: str,
+            chunks: list[str],
+            first_index: int,
+            base_payload: dict,
+    ) -> list[VectorPoint]:
+        """Embed one slice of a record's chunks with every vector type and build its points."""
+        vectors = profile.vectors
+        dense = await self.embedding.embed_documents(chunks, profile=vectors.dense.embedding) if vectors.dense else None
+        sparse = await self.sparse.vectorize_documents(chunks, profile=vectors.sparse.vectorizer) if vectors.sparse else None
+        multi = (
+            await self.embedding.embed_documents(chunks, profile=vectors.multi_vector.embedding)
+            if vectors.multi_vector else None
+        )
+        return [
             VectorPoint(
-                id=compute_uuid(f"{collection_name}:{payload.source_id}:{index}:{chunk}"),
-                dense_vector=dense_vectors[index] if dense_vectors is not None else None,
-                multi_vector=multi_vectors[index] if multi_vectors is not None else None,
-                sparse_vector=sparse_vectors[index] if sparse_vectors is not None else None,
+                id=compute_uuid(f"{profile.key}:{source_id}:{first_index + offset}:{chunk}"),
+                dense_vector=dense[offset] if dense is not None else None,
+                multi_vector=multi[offset] if multi is not None else None,
+                sparse_vector=sparse[offset] if sparse is not None else None,
                 payload={**base_payload, "text": chunk},
             )
-            for index, chunk in enumerate(chunks)
+            for offset, chunk in enumerate(chunks)
         ]
-
-        # Delete only after embedding succeeds, so generation errors preserve old vectors.
-        await self.vector_store.delete(name=collection_name, filters={VectorPayloadField.SOURCE_ID: payload.source_id})
-        await self.vector_store.upsert(name=collection_name, points=points)
-        # Per record, so debug level: the embedding job logs progress per batch at info.
-        logger.debug("ingestion_complete", source_id=payload.source_id, chunks=len(points), collection_name=collection_name)
-        return {"skipped": 0}
 
     def _render_template(self, templates: list[str], payload: KnowledgeVectorPayload) -> str:
         values = payload.model_dump(mode="python")

@@ -12,6 +12,7 @@ from sqlalchemy import text, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.application.services.jobs.job_submit import JobSubmissionService
+from backend.domain.entities.job_requests import RegistrationImportParams
 from backend.domain.entities.jobs import (
     JobBatchCreate,
     JobBatchStatus,
@@ -29,6 +30,8 @@ from backend.domain.ports.repositories.filters import JobBatchFilter, JobRunFilt
 from backend.infra.persistence.db.app.app_tables import AppBaseTable, JobRun
 from backend.infra.persistence.db.app.base.job_repo import SqlJobRepository
 from backend.infra.persistence.db.dialects.postgres import PostgresDialectOps
+
+REQUEST = RegistrationImportParams(term_code="202609")
 
 
 @pytest.fixture
@@ -64,7 +67,7 @@ async def test_two_independent_submission_services_cannot_start_the_same_job(db)
     results = await asyncio.gather(
         *(
             service.submit(
-                job_name="crawl:wlu", mode=JobMode.UPDATE, metadata={}, work=AsyncMock()
+                job_name="crawl:wlu", mode=JobMode.UPDATE, request=REQUEST
             )
             for service in services
         ),
@@ -114,7 +117,7 @@ async def test_sweep_fails_only_stale_unfinished_runs_and_their_unfinished_batch
                 ]
             )
     async with db.start() as repos:
-        assert await repos.jobs.fail_zombie_jobs(5) == 2
+        assert await repos.jobs.fail_zombie_jobs(heartbeat_timeout_minutes=5, queued_timeout_minutes=5) == 2
     async with db.start() as repos:
         runs = await repos.jobs.fetch_runs(JobRunPageParams())
         batches = await repos.jobs.fetch_batches(
@@ -156,7 +159,7 @@ async def test_heartbeat_committing_while_sweep_waits_prevents_false_failure(db)
     async def sweep():
         async with db.start() as repos:
             entered.set()
-            return await repos.jobs.fail_zombie_jobs(5)
+            return await repos.jobs.fail_zombie_jobs(heartbeat_timeout_minutes=5, queued_timeout_minutes=5)
 
     async with db.start() as repos:
         await repos.jobs.heartbeat_run(run_id)
@@ -165,3 +168,26 @@ async def test_heartbeat_committing_while_sweep_waits_prevents_false_failure(db)
         await asyncio.sleep(0.05)
         assert not task.done()
     assert await asyncio.wait_for(task, 3) == 0
+
+
+async def test_queued_runs_wait_for_the_queued_timeout_not_the_heartbeat_timeout(db):
+    # A run waiting in a worker queue behind a long job has no heartbeat; it must survive the
+    # heartbeat timeout and only fail once the (longer) queued timeout has passed.
+    ages = {"waiting": 30, "abandoned": 120, "running_silent": 30}
+    async with db.start() as repos:
+        for name, minutes in ages.items():
+            status = JobStatus.RUNNING if name.startswith("running") else JobStatus.QUEUED
+            run_id = await repos.jobs.create_run(JobRunCreate(job_name=name, status=status))
+            await repos.session.execute(
+                update(JobRun).where(JobRun.id == run_id)
+                .values(created_at=datetime.now(UTC) - timedelta(minutes=minutes))
+            )
+    async with db.start() as repos:
+        assert await repos.jobs.fail_zombie_jobs(heartbeat_timeout_minutes=5, queued_timeout_minutes=60) == 2
+    async with db.start() as repos:
+        runs = await repos.jobs.fetch_runs(JobRunPageParams())
+    assert {run.job_name: run.status for run in runs} == {
+        "waiting": JobStatus.QUEUED,
+        "abandoned": JobStatus.FAILED,
+        "running_silent": JobStatus.FAILED,
+    }

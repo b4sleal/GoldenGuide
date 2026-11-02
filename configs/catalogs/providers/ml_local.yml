@@ -46,6 +46,11 @@ catalog:
       splade:
         provider: splade
         model_name: prithivida/Splade_PP_en_v1
-        batch_size: 10
+        # GPU peak per inference ~ max_batch_tokens x 30522 vocab x 4 bytes (float32): ~1 GB here.
+        max_length: 512
+        max_batch_tokens: 8192
+        pooling_chunk_size: 128
+        max_concurrent_inferences: 1
+        dtype: float32
         device: cuda
         runtime: gpu

@@ -87,11 +87,11 @@ class RagChatbot:
         retrieval_ms = elapsed_ms(request_started)
         recorder.timings["retrieval_ms"] = retrieval_ms
 
-        # Step 2: replace source URLs in the context with short placeholders the model copies back,
-        # so it never retypes (or invents) long URLs; the resolver restores them in the stream.
+        # Step 2: keep URLs out of the context (plain course codes only, so the model never retypes, invents
+        # or copies a link); the resolver links known course codes in the stream.
         link_resolver = ChatbotLinkResolver()
         context_text = link_resolver.prepare_context(retrieval_data.context_text, sources=retrieval_data.sources)
-        link_resolver.register_links(retrieval_data.links)
+        link_resolver.register_course_links(retrieval_data.course_links)
 
         # Step 3: build the prompt from the current runtime settings. Today's date and the date scope are
         # computed here so the answer model never works out terms itself (a saved prompt without these
@@ -113,7 +113,7 @@ class RagChatbot:
         )
 
         # Step 4: stream post-processing chain, applied to every model chunk in this order:
-        #   citations ([Source n]) -> links (placeholders -> URLs) -> tables ({{TABLE:n}} -> table event)
+        #   citations ([n] or [Source n]) -> links (course codes -> URLs) -> tables ({{TABLE:n}} -> table event)
         citation_parser = CitationStreamParser(retrieval_data.sources)
         table_parser = TableMarkerParser(retrieval_data.tables)
 
@@ -145,7 +145,12 @@ class RagChatbot:
                 for final in place_tables(linked)
             ]
 
-        # Step 5: stream the model's answer through the chain.
+        # Step 5: the source list first, so inline citation chips can show their titles and previews
+        # while the text streams; then the model's answer through the chain.
+        yield line({
+            "type": "sources",
+            "sources": [source.model_dump() for source in retrieval_data.sources],
+        })
         yield _status_line(TurnStatus(stage=TurnStage.WRITING))
         generation_started = time.perf_counter()
         first_chunk_ms = None
@@ -172,12 +177,6 @@ class RagChatbot:
         # Step 7: tables the model didn't place are still shown, after the text, so none are lost.
         for event in table_parser.remaining():
             yield line(event)
-
-        # Step 8: the source list, always last.
-        yield line({
-            "type": "sources",
-            "sources": [source.model_dump() for source in retrieval_data.sources],
-        })
 
         recorder.timings["generation_ms"] = elapsed_ms(generation_started)
         recorder.timings["total_ms"] = elapsed_ms(request_started)

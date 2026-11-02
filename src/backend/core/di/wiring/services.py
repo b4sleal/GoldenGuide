@@ -5,7 +5,9 @@ services shared by requests are Singletons.
 """
 from dependency_injector import containers, providers
 
+from backend.application.services.jobs.execution import JobExecution
 from backend.application.services.jobs.job_submit import JobSubmissionService
+from backend.application.services.jobs.registry import JobRegistry, build_job_handlers
 from backend.application.services.simple_scraping.service import (
     AsyncCrawlerRunner,
 )
@@ -84,7 +86,14 @@ from backend.application.use_cases.settings.settings_service import (
 )
 from backend.core.di.wiring.router import RouterContainer
 from backend.domain.entities.wlu.lexicon_resolver import WluLexiconResolver
+from backend.domain.settings.jobs import JobExecutionMode
 from backend.infra.jobs.in_process_launcher import InProcessJobLauncher
+from backend.infra.jobs.procrastinate_app import (
+    build_procrastinate_app,
+    register_worker_tasks,
+)
+from backend.infra.jobs.procrastinate_launcher import ProcrastinateJobLauncher
+from backend.infra.jobs.thread_compute import ThreadComputeExecutor
 
 
 class ServiceContainer(containers.DeclarativeContainer):
@@ -95,18 +104,8 @@ class ServiceContainer(containers.DeclarativeContainer):
     catalog = providers.Dependency()
     jobs = providers.Dependency()
 
-    # Jobs run in the background of this process: endpoints queue them and return a run id at once.
-    # The launcher owns running tasks; submission uses the repository's transaction lock.
-    job_launcher = providers.Singleton(
-        InProcessJobLauncher,
-        app_db=persistence.app_db,
-        heartbeat_seconds=jobs.provided.heartbeat_seconds,
-    )
-    job_submission = providers.Singleton(
-        JobSubmissionService,
-        app_db=persistence.app_db,
-        launcher=job_launcher,
-    )
+    # CPU-bound job steps (HTML parsing) run here, off the event loop.
+    compute_executor = providers.Singleton(ThreadComputeExecutor)
 
     settings_cache_service = providers.Singleton(
         SettingsCacheService,
@@ -148,6 +147,7 @@ class ServiceContainer(containers.DeclarativeContainer):
         reranker_orchestrator=ml.reranker_orchestrator,
         school_db=persistence.school_db,
         institution=catalog.provided.institution,
+        snippet_settings=catalog.provided.chat.source_snippet,
     )
 
     academic_retrieval_orchestrator = providers.Singleton(
@@ -225,6 +225,7 @@ class ServiceContainer(containers.DeclarativeContainer):
         AsyncCrawlerRunner,
         school_db=persistence.school_db,
         blob_storage=persistence.app_blob_storage,
+        compute=compute_executor,
     )
 
     academic_calendar_profile = providers.Factory(
@@ -251,6 +252,7 @@ class ServiceContainer(containers.DeclarativeContainer):
         lexicon_profile=catalog.provided.text_enrichment.wlu_lexicon,
         lexicon_resolver=lexicon_resolver,
         profile=academic_calendar_profile,
+        compute=compute_executor,
     )
 
     academic_calendar_audit_service = providers.Factory(
@@ -278,6 +280,7 @@ class ServiceContainer(containers.DeclarativeContainer):
         WebsitePersistenceService,
         school_db=persistence.school_db,
         blob_storage=persistence.app_blob_storage,
+        compute=compute_executor,
     )
 
     website_persistence_job = providers.Factory(
@@ -298,6 +301,7 @@ class ServiceContainer(containers.DeclarativeContainer):
         school_db=persistence.school_db,
         blob_storage=persistence.app_blob_storage,
         lexicon_resolver=lexicon_resolver,
+        compute=compute_executor,
     )
 
     registration_jobs = providers.Factory(
@@ -305,4 +309,52 @@ class ServiceContainer(containers.DeclarativeContainer):
         app_db=persistence.app_db,
         scraper=wlu_registration_scraper,
         persistence=wlu_registration_persistence,
+    )
+
+    # ---- Running jobs (docs/backend/architecture.md#background-jobs) ------------------------------
+    # The registry receives each job's Factory (`.provider`), not an instance, so every run gets a
+    # fresh job: jobs hold per-run state.
+    job_registry = providers.Singleton(
+        JobRegistry,
+        handlers=providers.Callable(
+            build_job_handlers,
+            academic_calendar_crawl_job=academic_calendar_crawl_job.provider,
+            academic_calendar_persistence_job=academic_calendar_persistence_job.provider,
+            website_crawl_job=website_crawl_job.provider,
+            website_persistence_job=website_persistence_job.provider,
+            registration_jobs=registration_jobs.provider,
+            course_embedding_job=course_embedding_job.provider,
+            course_term_embedding_job=course_term_embedding_job.provider,
+            wlu_page_embedding_job=wlu_page_embedding_job.provider,
+        ),
+    )
+    job_execution = providers.Singleton(
+        JobExecution,
+        app_db=persistence.app_db,
+        registry=job_registry,
+        heartbeat_seconds=jobs.provided.heartbeat_seconds,
+    )
+    # Procrastinate on the app database. The API only defers by task name; the worker process uses
+    # procrastinate_worker_app, the same App with the run_job task registered.
+    procrastinate_app = providers.Singleton(
+        build_procrastinate_app,
+        db=catalog.provided.active.db["app"],
+        worker=jobs.provided.worker,
+    )
+    procrastinate_worker_app = providers.Singleton(
+        register_worker_tasks, app=procrastinate_app, executor=job_execution,
+    )
+    # Where submitted jobs run (system.jobs.execution): endpoints return a run id at once either way.
+    # in_process: tasks in this process (development). worker: queued for worker containers.
+    job_launcher = providers.Selector(
+        jobs.provided.execution,
+        **{
+            JobExecutionMode.IN_PROCESS: providers.Singleton(InProcessJobLauncher, execution=job_execution),
+            JobExecutionMode.WORKER: providers.Singleton(ProcrastinateJobLauncher, app=procrastinate_app),
+        },
+    )
+    job_submission = providers.Singleton(
+        JobSubmissionService,
+        app_db=persistence.app_db,
+        launcher=job_launcher,
     )

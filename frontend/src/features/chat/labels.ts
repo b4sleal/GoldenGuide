@@ -40,6 +40,17 @@ export const SOURCES_LABEL = "Sources";
 export const SOURCE_LINKS_LABEL = "Source links";
 export const PREVIOUS_SOURCES_LABEL = "Previous sources";
 export const NEXT_SOURCES_LABEL = "Next sources";
+export const CITED_SOURCES_LABEL = "Cited sources";
+
+/** A citation chip's accessible name: every source it names, since the chip shows only the first. */
+export function citationChipLabel(titles: readonly string[]): string {
+  return `${titles.length > 1 ? "Sources" : "Source"}: ${titles.join(", ")}`;
+}
+
+/** Stands in for a source's title until the answer's source list has arrived. */
+export function sourceNumberLabel(number: number): string {
+  return `Source ${number}`;
+}
 
 /** Notice under an unfinished answer. Errors use the server's own message instead. */
 export const ENDED_NOTICES: Partial<Record<AnswerPhase, string>> = {

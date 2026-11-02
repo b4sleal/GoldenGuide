@@ -32,6 +32,8 @@ catalog:
         provider: qdrant
         host: ${secrets:VECTOR_STORE__QDRANT__HOST,qdrant}
         port: ${secrets:VECTOR_STORE__QDRANT__PORT,'6333'}
+        grpc_port: ${secrets:VECTOR_STORE__QDRANT__GRPC_PORT,'6334'}
+        prefer_grpc: ${secrets:VECTOR_STORE__QDRANT__PREFER_GRPC,'true'}
         https: ${secrets:VECTOR_STORE__QDRANT__HTTPS,'false'}
         api_key: ${secrets:VECTOR_STORE__QDRANT__API_KEY}
         timeout_seconds: 120

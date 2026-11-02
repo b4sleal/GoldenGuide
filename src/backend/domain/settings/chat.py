@@ -12,5 +12,11 @@ class ConversationHistorySettings(FrozenChatSettings):
     max_chars_per_message: int = Field(gt=0, description="Each earlier message is cut to this many characters.")
 
 
+class SourceSnippetSettings(FrozenChatSettings):
+    """The preview text each source carries for the answer's source cards."""
+    max_chars: int = Field(gt=0, description="Snippets are cut to about this many characters.")
+
+
 class ChatSettings(FrozenChatSettings):
     conversation_history: ConversationHistorySettings
+    source_snippet: SourceSnippetSettings

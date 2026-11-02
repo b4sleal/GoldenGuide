@@ -23,7 +23,7 @@ describe("answer tables", () => {
   });
 
   it("makes Markdown tables keyboard-focusable while preserving links and cell content", async () => {
-    render(<Markdown markdown={"| Course | Prerequisite |\n| --- | --- |\n| [CP264](https://wlu.ca/cp264) | CP164 |"} />);
+    render(<Markdown idPrefix="0" markdown={"| Course | Prerequisite |\n| --- | --- |\n| [CP264](https://wlu.ca/cp264) | CP164 |"} />);
 
     const viewport = screen.getByRole("region", { name: "Answer table" });
     const table = within(viewport).getByRole("table");

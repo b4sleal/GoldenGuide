@@ -2,13 +2,17 @@
 
 A missing collection is created. An existing one must carry the same metadata (version, embedding
 model and dimension, chunking): vectors built with different settings cannot be searched together, so
-a mismatch stops startup instead of silently mixing incompatible vectors.
+a mismatch stops startup instead of silently mixing incompatible vectors. Every collection then gets an
+index on each filtered payload field (FILTERED_PAYLOAD_FIELDS), which also migrates older collections.
 """
 import structlog
 from pydantic import ValidationError
 
 from backend.domain.settings.profiles import VectorCollectionCatalog
-from backend.domain.ports.providers.vector_store.vector_models import CollectionMetadata
+from backend.domain.ports.providers.vector_store.vector_models import (
+    FILTERED_PAYLOAD_FIELDS,
+    CollectionMetadata,
+)
 from backend.domain.ports.providers.vector_store.port import ManagedVectorStore
 
 logger = structlog.get_logger()
@@ -54,6 +58,7 @@ class VectorCollectionInitializer:
                     config=vc,
                     metadata=expected_metadata
                 )
+                await self.vector_store.ensure_payload_indexes(collection_name, FILTERED_PAYLOAD_FIELDS)
 
                 continue
 
@@ -85,4 +90,5 @@ class VectorCollectionInitializer:
                     f'Roll back the config or increase the collection version.'
                 )
 
+            await self.vector_store.ensure_payload_indexes(collection_name, FILTERED_PAYLOAD_FIELDS)
             logger.info("vector_collection_initialized", collection_name=collection_name)

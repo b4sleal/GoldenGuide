@@ -5,3 +5,4 @@ local_embedding_service:
   port: ${secrets:LOCAL_EMBEDDING_SERVICE__PORT,'8001'}
   request_timeout_seconds: 180
   max_texts_per_request: 16
+  memory_log_interval_seconds: 60

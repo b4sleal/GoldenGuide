@@ -15,6 +15,7 @@ from backend.domain.entities.jobs import (
     JobBatchStatus,
     JobBatchUpdate,
     JobMode,
+    JobRunMetadataKey,
     JobRunUpdate,
     JobStatus,
     JobWorkResult,
@@ -80,8 +81,8 @@ class OneShotJobRunner:
             final_metadata = {
                 "mode": mode.value,
                 "metadata": metadata,
-                "summary": summary,
-                "audit": audit,
+                JobRunMetadataKey.SUMMARY: summary,
+                JobRunMetadataKey.AUDIT: audit,
             }
 
             async with self.app_db.start() as repos:

@@ -682,12 +682,19 @@ export interface components {
              * @description Safe outcome message; internal errors stay in server records.
              */
             message?: string | null;
+            /** @description Work counts of a finished one-shot run (e.g. crawl page outcomes). */
+            summary?: components["schemas"]["JsonObject"] | null;
+            /** @description Post-run audit counts, when the job has an auditor. */
+            audit?: components["schemas"]["JsonObject"] | null;
         };
         /**
          * JobStatus
          * @enum {string}
          */
         JobStatus: "queued" | "running" | "success" | "partial_success" | "failed" | "cancelled";
+        JsonObject: {
+            [key: string]: unknown;
+        };
         /**
          * MessageRole
          * @enum {string}
@@ -706,6 +713,8 @@ export interface components {
             url?: string | null;
             /** Source Type */
             source_type?: string | null;
+            /** Snippet */
+            snippet?: string | null;
         };
         /** RouterLLM */
         RouterLLM: {

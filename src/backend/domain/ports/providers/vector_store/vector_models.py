@@ -14,6 +14,21 @@ class VectorPayloadField(StrEnum):
     CREATED_AT = "created_at"              # First embedded (UTC ISO 8601), kept across re-embeds.
     UPDATED_AT = "updated_at"              # Last embedded (UTC ISO 8601).
 
+
+class PayloadIndexKind(StrEnum):
+    """How a filtered payload field is indexed: exact-match values or timestamps (ranges)."""
+    KEYWORD = "keyword"
+    DATETIME = "datetime"
+
+
+# Every payload field the application filters on, and how it is indexed. Unindexed filters scan every
+# point, so their cost grows with the collection; a new filter on another field belongs here.
+FILTERED_PAYLOAD_FIELDS: dict[VectorPayloadField, PayloadIndexKind] = {
+    VectorPayloadField.SOURCE_ID: PayloadIndexKind.KEYWORD,
+    VectorPayloadField.EMBEDDING_SOURCE: PayloadIndexKind.KEYWORD,
+    VectorPayloadField.UPDATED_AT: PayloadIndexKind.DATETIME,
+}
+
 # Generic metadata payload stored with vectors
 type Payload = dict[str, Any]
 

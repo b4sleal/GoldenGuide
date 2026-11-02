@@ -494,6 +494,40 @@ services:
         required: false
     networks: [public, private]
 
+  # Job worker (docs/backend/architecture.md#background-jobs): runs queued crawls, imports and indexing outside the
+  # API, with its own CPU/RAM caps. Used when JOBS__EXECUTION=worker; opt-in through its profile, e.g.
+  #   docker compose --env-file .env.prod --profile worker up -d --no-build worker
+  # Same image as the backend: build it with `docker compose build backend`.
+  worker:
+    <<: *backend-image
+    cpus: ${WORKER_CPUS:-2.0}
+    mem_limit: ${WORKER_MEMORY_LIMIT:-2g}
+    memswap_limit: ${WORKER_MEMORY_LIMIT:-2g}
+    profiles: [worker]
+    restart: unless-stopped
+    command: [python, -m, backend.worker]
+    # Longer than system.jobs.worker.shutdown_graceful_timeout_seconds (60 s), so jobs can finish or be
+    # recorded as interrupted before Docker kills the process.
+    stop_grace_period: 90s
+    environment:
+      <<: *python-env
+      OTEL_SERVICE_NAME: goldenguide-worker
+    depends_on:
+      provision:
+        condition: service_completed_successfully
+        required: false
+      redis:
+        condition: service_healthy
+        required: false
+      local-embedding-gpu:
+        condition: service_healthy
+        required: false
+      local-embedding-cpu:
+        condition: service_healthy
+        required: false
+    # public: crawls and LORIS exports reach the university's websites; private: data stores.
+    networks: [public, private]
+
   # Nginx: serves the static UI and proxies /api to the backend. The browser only talks to this origin.
   frontend:
     <<: *container-limits

@@ -67,6 +67,7 @@ Profiles decide **which** services run; the override files decide **how**.
 | `embedding-gpu` / `embedding-cpu` | Embedding service on an NVIDIA GPU (port 8001) or CPU (port 8002) |
 | `provision` | One-shot job: migrations, buckets, vector collections |
 | `backend` | FastAPI API |
+| `worker` | Job worker (`python -m backend.worker`, same image as the backend): runs queued crawls, imports and indexing when `JOBS__EXECUTION=worker`. Opt-in, not in `all`/`all-dev`: `--profile worker` (scale with `--scale worker=N`) |
 | `frontend` | Nginx: UI and API reverse proxy; development also starts the internal Vite service |
 | `auth` | Development Keycloak |
 | `observability` | Loki, Alloy, Grafana, Jaeger, OpenTelemetry Collector |
@@ -269,6 +270,7 @@ swap: a service over its RAM is OOM-killed and restarted instead of swapping). D
 | Small services | 0.5 / 512 MiB |
 | Backend, provision, PostgreSQL, Keycloak | 1 / 1 GiB |
 | Qdrant | 1 / 2 GiB |
+| Job worker (`WORKER_CPUS` / `WORKER_MEMORY_LIMIT`) | 2 / 2 GiB: the worker process plus `system.jobs.worker.compute_processes` (2) parsing children; keep the two in step |
 | Each embedding service | 2 / 4 GiB system RAM |
 
 Change them with the `*_CPUS` / `*_MEMORY_LIMIT` variables. They are maximums, not reservations;
@@ -290,7 +292,12 @@ Not covered by container limits:
   docker compose up -d --no-build --remove-orphans
   ```
 
-- **GPU memory.** GPU reservation grants access to the device; it doesn't cap VRAM.
+- **GPU memory.** GPU reservation grants access to the device; it doesn't cap VRAM. The embedding
+  service bounds its own: SPLADE runs on the GPU with a token budget (`max_batch_tokens`,
+  `max_concurrent_inferences` in `ml_local.yml`, ~1 GB peak at the defaults), so its system RAM
+  stays near its startup level (~2-2.7 GB with all four models loaded, of the 4 GiB limit).
+  Lower `max_batch_tokens` for a smaller GPU; Windows "shared GPU memory" is system RAM and is not
+  relied on.
 - **Disk I/O.** Compose can't promise a portable disk-I/O cap on Docker Desktop.
 
 References: [Docker resource constraints](https://docs.docker.com/engine/containers/resource_constraints/),

@@ -4,9 +4,9 @@ const CONVERSATION = "44444444-4444-4444-8444-444444444444";
 
 const events = [
   { type: "status", stage: "understanding" },
+  { type: "sources", sources: [{ title: "CP264 Data Structures II", url: "https://academic-calendar.wlu.ca/" }] },
   { type: "text", text: "CP264 requires **CP164**" },
   { type: "citation", source_nums: [1], urls: ["https://academic-calendar.wlu.ca/"] },
-  { type: "sources", sources: [{ title: "CP264 Data Structures II", url: "https://academic-calendar.wlu.ca/" }] },
   { type: "ok" },
 ];
 
@@ -61,7 +61,7 @@ test("asks a question and shows a sourced answer", async ({ page }) => {
 
   const answer = page.getByRole("article", { name: /goldenguide answer/i });
   await expect(answer.getByText("CP164")).toBeVisible();
-  await expect(answer.getByRole("link", { name: /source 1/i })).toBeVisible();
+  await expect(answer.getByRole("button", { name: "Source: CP264 Data Structures II" })).toBeVisible();
   await expect(answer.getByRole("region", { name: "Sources" })).toContainText("CP264 Data Structures II");
   await expect(page).toHaveURL(new RegExp(`/c/${CONVERSATION}$`));
   await expect(input).toBeFocused();
@@ -155,7 +155,7 @@ test("restores streamed tables, citations and sources after a full reload", asyn
   await page.route("**/api/v1/chat/stream", (route) => route.fulfill({
     contentType: "application/x-ndjson",
     headers: { "X-Conversation-Id": CONVERSATION },
-    body: [...blocks, { type: "sources", sources }, { type: "ok" }].map((event) => JSON.stringify(event)).join("\n") + "\n",
+    body: [{ type: "sources", sources }, ...blocks, { type: "ok" }].map((event) => JSON.stringify(event)).join("\n") + "\n",
   }));
   await page.route(`**/api/v1/chat/conversations/${CONVERSATION}/messages`, (route) => route.fulfill({ json: [{
     id: 2, position: 2, role: "assistant", content: "CP264 sectionsCheck LORIS for live availability.",
@@ -174,7 +174,8 @@ test("restores streamed tables, citations and sources after a full reload", asyn
   const answer = page.getByRole("article", { name: /goldenguide answer/i });
   await expect(answer.getByRole("cell", { name: "Mon/Wed" })).toBeVisible();
   await expect(answer.getByRole("cell", { name: "Friday" })).toBeVisible();
-  await expect(answer.getByRole("link", { name: /source 1/i })).toHaveAttribute("href", "https://loris.wlu.ca");
+  await answer.getByRole("button", { name: "Source: LORIS registration" }).click();
+  await expect(page.getByRole("list", { name: "Cited sources" }).getByRole("link")).toHaveAttribute("href", "https://loris.wlu.ca");
   await expect(answer.getByRole("region", { name: "Sources" })).toContainText("LORIS registration");
   await expect(answer.getByRole("button", { name: "Good answer" })).toBeVisible();
 });
@@ -305,4 +306,55 @@ test("keeps sources in one row with mouse dragging, keyboard controls and native
     }
   }
   expect(await page.locator("html").evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+});
+
+test("shows cited sources in a card on hover and lights up the text they cover", async ({ page, isMobile }) => {
+  const sources = Array.from({ length: 4 }, (_, index) => ({
+    title: `Official source ${index + 1}`, url: `https://www.wlu.ca/source-${index + 1}`, snippet: `Preview of source ${index + 1}`,
+  }));
+  const stream = [
+    { type: "sources", sources },
+    { type: "text", text: "Opened in 1999." },
+    { type: "citation", source_nums: [1, 2, 3, 4], urls: sources.map((source) => source.url) },
+    { type: "text", text: " Later." },
+    { type: "citation", source_nums: [2], urls: [sources[1]!.url] },
+    { type: "ok" },
+  ];
+  await page.route("**/api/v1/chat/conversations", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/v1/chat/stream", (route) => route.fulfill({
+    contentType: "application/x-ndjson",
+    headers: { "X-Conversation-Id": CONVERSATION },
+    body: stream.map((event) => JSON.stringify(event)).join("\n") + "\n",
+  }));
+  await page.goto("/");
+  await page.getByLabel(/ask about laurier/i).fill("When did it open?");
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Answer ready.")).toBeAttached();
+
+  const answer = page.getByRole("article", { name: /goldenguide answer/i });
+  const chip = answer.getByRole("button", { name: /Official source 1/ });
+  // Phones cannot hover: a tap opens the same card.
+  if (isMobile) await chip.tap();
+  else await chip.hover();
+  const card = page.getByRole("list", { name: "Cited sources" });
+  await expect(card).toBeVisible();
+  await expect(card.getByRole("link").first()).toHaveAttribute("href", sources[0]!.url);
+
+  // The card shows about two sources and scrolls the rest, so it never covers the answer.
+  const { visible, total } = await card.evaluate((element) => ({ visible: element.clientHeight, total: element.scrollHeight }));
+  expect(total).toBeGreaterThan(visible);
+  expect(visible).toBeLessThan(240);
+
+  // The chip alone highlights nothing; hovering a source in its card highlights only the text it covers.
+  await expect(answer.locator("[data-highlighted]")).toHaveCount(0);
+  await card.getByRole("link").first().hover();
+  await expect(answer.locator("span[data-highlighted]", { hasText: "Opened in 1999." })).toBeVisible();
+  await expect(answer.locator("span[data-highlighted]", { hasText: "Later." })).toHaveCount(0);
+
+  if (!isMobile) {
+    await card.getByRole("link").first().hover();
+    await expect(card).toBeVisible();
+    await page.mouse.move(0, 0);
+    await expect(card).toBeHidden();
+  }
 });

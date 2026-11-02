@@ -40,6 +40,10 @@ async def qdrant_store(infra_service_url):
             provider="qdrant",
             host=url.hostname,
             port=url.port or 6333,
+            # Same transport as production (configs/catalogs/providers/infra.yml), so the contract
+            # covers the gRPC conversions of filters, multivectors, RRF queries and payload indexes.
+            grpc_port=int(os.getenv("QDRANT_TEST_GRPC_PORT", "6334")),
+            prefer_grpc=True,
             api_key=os.getenv("QDRANT_TEST_API_KEY", ""),
             timeout_seconds=15,
         )
