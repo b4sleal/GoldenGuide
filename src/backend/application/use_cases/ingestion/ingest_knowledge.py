@@ -51,6 +51,25 @@ class KnowledgeIngestor:
             results.append(await self.ingest_profile(payload, profile))
         return {"targets": len(results), "skipped": sum(r["skipped"] for r in results)}
 
+    async def refresh_payload(self, payload: KnowledgeVectorPayload) -> None:
+        """Rewrite `payload`'s fields on the record's existing points without embedding again.
+
+        For payload-only changes (a new or changed filter field): vectors, chunk text and the embed
+        timestamps stay as they are, so stale-vector cleanup still sees when each point was embedded.
+        Fields that are now None are removed, as a re-embed would leave them out. A record that was
+        never embedded has no points, and stays that way until it is.
+        """
+        fields = payload.model_dump(exclude={"content"}, mode="json")
+        values = {key: value for key, value in fields.items() if value is not None}
+        removed = [key for key, value in fields.items() if value is None]
+        for profile in self._target_profiles():
+            await self.vector_store.set_payload(
+                name=profile.key,
+                filters={VectorPayloadField.SOURCE_ID: payload.source_id},
+                values=values,
+                remove=removed,
+            )
+
     async def delete_stale(self, source: VectorSource, embedded_before: datetime) -> int:
         """Delete `source`'s vectors last embedded before `embedded_before`: records a fresh run no longer has."""
         deleted = 0

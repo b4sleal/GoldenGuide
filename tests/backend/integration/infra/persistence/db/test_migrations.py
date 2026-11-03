@@ -69,6 +69,77 @@ def test_answer_content_migration_preserves_legacy_history(migrated_database_url
     asyncio.run(verify_and_clean())
 
 
+CALENDAR = "https://academic-calendar.wlu.ca"
+# url -> level migration 0006 must set: only calendar URLs with a known `cal` get one.
+LEVEL_PAGES = {
+    f"{CALENDAR}/department.php?cal=1&d=1&s=1&y=93": "undergraduate",
+    f"{CALENDAR}/program.php?cal=3&d=1&p=1&s=1&y=94": "graduate",
+    f"{CALENDAR}/department.php?cal=10&d=1&s=1&y=93": None,  # Not cal=1.
+    f"{CALENDAR}/department.php?cal=2&d=1&s=1&y=76": None,   # Unknown calendar.
+}
+WEBSITE_PAGE = "https://students.wlu.ca/tuition?cal=1"     # Not the calendar: stays NULL.
+GRADUATE_COURSE_URL = f"{CALENDAR}/course.php?c=1&cal=3&d=1&s=1&y=94"
+
+
+def test_academic_level_migration_fills_only_calendar_rows_and_downgrades(migrated_database_url):
+    config = alembic_config(migrated_database_url)
+
+    async def run(statements: list[tuple[str, dict]]):
+        engine = create_async_engine(migrated_database_url)
+        try:
+            async with engine.begin() as connection:
+                for statement, params in statements:
+                    await connection.execute(text(statement), params)
+        finally:
+            await engine.dispose()
+
+    page = (
+        "INSERT INTO wlu_pages (url, version, site_name, record_type, title, content, metadata_json) "
+        "VALUES (:url, '2026/2027', :site, 'department', 't', 'c', '{}')"
+    )
+    seed = [(page, {"url": url, "site": "academic_calendar_wlu"}) for url in LEVEL_PAGES]
+    seed.append((page, {"url": WEBSITE_PAGE, "site": "students_wlu"}))
+    seed.append((
+        "INSERT INTO courses (academic_year, institution, subject, subject_code, course_number, campus, "
+        "calendar_url, metadata_json) VALUES ('2026/2027', 'WLU', 'Public Safety', 'SAFE', '600', 'Waterloo', :url, '{}')",
+        {"url": GRADUATE_COURSE_URL},
+    ))
+
+    page_urls = [*LEVEL_PAGES, WEBSITE_PAGE]
+
+    async def select(statement: str, params: dict | None = None):
+        engine = create_async_engine(migrated_database_url)
+        try:
+            async with engine.connect() as connection:
+                return (await connection.execute(text(statement), params or {})).all()
+        finally:
+            await engine.dispose()
+
+    command.downgrade(config, "0005")
+    try:
+        asyncio.run(run(seed))
+    finally:
+        upgrade_to_head(migrated_database_url)
+    try:
+        urls = {"urls": page_urls}
+        pages = asyncio.run(select("SELECT url, academic_level FROM wlu_pages WHERE url = ANY(:urls)", urls))
+        courses = asyncio.run(select(
+            "SELECT calendar_url, academic_level FROM courses WHERE calendar_url = :url", {"url": GRADUATE_COURSE_URL},
+        ))
+        assert dict(pages) == {**LEVEL_PAGES, WEBSITE_PAGE: None}
+        assert dict(courses) == {GRADUATE_COURSE_URL: "graduate"}
+
+        # Downgrading drops only the derived column; the rows stay.
+        command.downgrade(config, "0005")
+        assert len(asyncio.run(select("SELECT id FROM wlu_pages WHERE url = ANY(:urls)", urls))) == len(page_urls)
+    finally:
+        upgrade_to_head(migrated_database_url)
+        asyncio.run(run([
+            ("DELETE FROM wlu_pages WHERE url = ANY(:urls)", {"urls": page_urls}),
+            ("DELETE FROM courses WHERE calendar_url = :url", {"url": GRADUATE_COURSE_URL}),
+        ]))
+
+
 async def test_startup_check_rejects_an_outdated_schema(migrated_database_url):
     # Alembic runs its own event loop, so from async code it must run in a worker thread.
     def downgrade():

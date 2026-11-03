@@ -141,10 +141,18 @@ def parse_calendar_batch(
 
         # Then resolve them for the database
         faculty = lexicon_resolver.resolve_faculty(raw_faculty)
-        departments = [lexicon_resolver.resolve_subject(d) or "" for d in raw_departments]
+        # Canonical names keep departments the same across sources (calendar, LORIS); unlisted ones keep theirs.
+        departments = [lexicon_resolver.department_name(d) for d in raw_departments]
 
         is_faculty_crumb = not raw_departments and raw_current == raw_faculty
         record_type = classify_calendar_url(page.url, faculty, departments, is_faculty_crumb, lexicon_profile)
+
+        academic_level = AcademicCalendarProfile.academic_level(page.url)
+        if academic_level is None:
+            # Stored without a level (as if it applied to every student) until CALENDAR_LEVELS lists it.
+            logger.warning(
+                "academic_calendar_level_unknown", url=page.url, cal=AcademicCalendarProfile.calendar_param(page.url),
+            )
 
         if not title.strip() or not page_text.strip():
             logger.warning(
@@ -187,6 +195,7 @@ def parse_calendar_batch(
                     subject=canonical_subject,
                     subject_code=subject_code,
                     course_number=course_number,
+                    academic_level=academic_level,
                     title=parsed_title,
                     description=parsed_course_text,
                     calendar_url=page.url,
@@ -208,6 +217,9 @@ def parse_calendar_batch(
             )
             continue
 
+        if record_type == AcademicCalendarType.DEPARTMENT:
+            title = lexicon_resolver.department_name(title)
+
         batch.persisted_pages.append(page)
         batch.academic_records.append(
             WluPageCreate(
@@ -216,6 +228,7 @@ def parse_calendar_batch(
                 url=page.url,
                 content_hash=page.content_hash,
                 record_type=record_type,
+                academic_level=academic_level,
                 title=title,
                 content=page_text,
                 metadata_json=WluPageMetadata(

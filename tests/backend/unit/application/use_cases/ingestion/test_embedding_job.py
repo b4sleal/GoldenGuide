@@ -59,11 +59,17 @@ class SpyIngestor:
     def __init__(self, failing=()):
         self.failing = set(failing)
         self.source_ids = []
+        self.payload_refreshes = []
 
     async def ingest(self, payload):
         if payload.source_id in self.failing:
             raise TimeoutError("qdrant read timeout")
         self.source_ids.append(payload.source_id)
+
+    async def refresh_payload(self, payload):
+        if payload.source_id in self.failing:
+            raise TimeoutError("qdrant read timeout")
+        self.payload_refreshes.append(payload.source_id)
 
 
 def pages():
@@ -130,6 +136,31 @@ async def test_retry_replays_the_failed_batch_and_embeds_only_what_failed():
     assert db.flagged() == []
 
 
+@pytest.mark.parametrize("mode", [JobMode.FRESH, JobMode.RETRY])
+async def test_payload_only_refreshes_every_record_without_embedding_or_touching_flags(mode):
+    db, spy = FakeSchoolDB(pages()), SpyIngestor()
+    ex = EmbeddingExecutor(db, spy, WluPageEmbeddingSource(), mode, payload_only=True)
+
+    for batch_no, offset in enumerate(range(0, 5, 2), start=1):
+        await ex.execute_batch(JobBatchParams(batch_no=batch_no, offset=offset, batch_size=2))
+
+    assert spy.source_ids == []  # Nothing embedded.
+    assert spy.payload_refreshes == [f"page_{i}" for i in range(1, 6)]  # Every record, flagged or not.
+    assert db.flagged() == [1, 4]  # needs_embedding describes the vectors, which did not change.
+
+
+async def test_a_failed_payload_refresh_fails_its_batch_and_leaves_flags_alone():
+    db, spy = FakeSchoolDB(pages()), SpyIngestor(failing={"page_3"})
+    ex = EmbeddingExecutor(db, spy, WluPageEmbeddingSource(), JobMode.FRESH, payload_only=True)
+
+    with pytest.raises(EmbeddingBatchError) as failure:
+        await ex.execute_batch(JobBatchParams(batch_no=2, offset=2, batch_size=2))
+
+    assert failure.value.source_ids == ["page_3"]
+    assert spy.payload_refreshes == ["page_4"]
+    assert db.flagged() == [1, 4]
+
+
 class CapturingRepo:
     def __init__(self):
         self.params = None
@@ -190,18 +221,21 @@ def fake_runner(status):
     return Runner
 
 
-@pytest.mark.parametrize("mode, status, swept", [
-    (JobMode.FRESH, JobStatus.SUCCESS, True),
-    (JobMode.FRESH, JobStatus.PARTIAL_SUCCESS, False),  # An untouched vector may be a record that failed.
-    (JobMode.UPDATE, JobStatus.SUCCESS, False),         # Update skips unchanged records: untouched is not stale.
-    (JobMode.RETRY, JobStatus.SUCCESS, False),
+@pytest.mark.parametrize("mode, status, payload_only, swept", [
+    (JobMode.FRESH, JobStatus.SUCCESS, False, True),
+    (JobMode.FRESH, JobStatus.PARTIAL_SUCCESS, False, False),  # An untouched vector may be a record that failed.
+    (JobMode.UPDATE, JobStatus.SUCCESS, False, False),         # Update skips unchanged records: untouched is not stale.
+    (JobMode.RETRY, JobStatus.SUCCESS, False, False),
+    (JobMode.FRESH, JobStatus.SUCCESS, True, False),           # Embeds nothing: every vector would look stale.
 ])
-async def test_only_a_fully_successful_fresh_run_sweeps_stale_vectors(monkeypatch, mode, status, swept):
+async def test_only_a_fully_successful_fresh_embedding_run_sweeps_stale_vectors(
+    monkeypatch, mode, status, payload_only, swept,
+):
     monkeypatch.setattr(embedding_job, "BatchJobRunner", fake_runner(status))
     ingestor = SweepingIngestor()
 
     output = await embedding_job.EmbeddingJob(None, None, ingestor, WluPageEmbeddingSource()).run(
-        run_id=1, mode=mode, batch_size=10, max_concurrent_batches=1,
+        run_id=1, mode=mode, batch_size=10, max_concurrent_batches=1, payload_only=payload_only,
     )
 
     assert bool(ingestor.sweeps) is swept

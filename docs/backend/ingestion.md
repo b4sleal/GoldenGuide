@@ -44,13 +44,36 @@ never requires re-downloading (the raw HTML is kept in MinIO).
 
 | Source | Discover / export | Import | Stored as |
 | --- | --- | --- | --- |
-| **Academic Calendar** | Crawls the calendar for an academic year and records which pages exist | Parses course and program pages in batches | `courses`, `wlu_pages` (programs, glossary) |
+| **Academic Calendar** | Crawls the calendar for an academic year and records which pages exist | Parses course and program pages in batches | `courses`, `wlu_pages` (faculties, departments, programs, glossary, other pages) |
 | **WLU websites** (`wlu`, `students_wlu`, `scholars_wlu`) | Breadth-first crawl seeded from sitemaps, restricted to each site's allowed domains (`configs/catalogs/scraping/websites.yml`) | Extracts title and body text in batches | `wlu_pages` |
 | **LORIS registration** | Downloads one term's offerings (`term_code`, e.g. `202609`) | Loads the saved extract into course terms | `course_terms`, `course_term_meetings`, `course_term_faculty` |
 
 The crawler (`application/services/simple_scraping/`) is an async crawler on `httpx`: every URL,
 including redirects, passes the site profile's rules and `robots.txt`; a network failure on one page
 is stored as retryable and the crawl continues. Parsing uses BeautifulSoup.
+
+**Academic Calendar record types** (`academic_calendar/scrape/parse.py`). The URL decides first:
+`course.php`, `program.php`, `department.php` and `glossary.php` are typed by their path. Of the
+remaining `section.php` pages, a faculty's own page is one whose breadcrumb is only the faculty (in
+the lexicon's `faculties`); faculty sub-pages (`&ss=`, e.g. Academic Advising) are `page`. Every
+breadcrumb ends with the page itself, so a department page `[Faculty of Science, Biology]` has no
+crumbs in between, just like a faculty page; the URL check keeps it a department.
+
+**Department names.** Department page titles drop the heading subtitle (the parent unit, e.g.
+"Department of Languages and Literatures", which stays in the page text). Department titles and
+course `departments` use the lexicon's canonical department name ("Arabic (Lang/Lit)" → "Arabic"),
+so the calendar and LORIS name departments the same way; a department the lexicon does not list
+keeps its calendar name.
+
+**Academic level.** Calendar pages and courses get `academic_level` from the URL's `cal` parameter
+(`AcademicCalendarProfile.CALENDAR_LEVELS`: `1` undergraduate, `3` graduate). An unknown `cal` is
+stored without a level and logged (`academic_calendar_level_unknown`); add it to the mapping.
+Website pages and LORIS-only courses have no level: they apply to every student, and a level filter
+(`WluPageFilter.academic_level`, `CourseFilter.academic_level`) always includes them. The level is
+also in the vector payload (`academic_level`, keyword-indexed); pages without one omit the key. It is
+not part of the embedded text, so changing it does not set `needs_embedding`: refresh the vectors'
+payload with a `payload_only` indexing run (below).
+Calendar re-imports overwrite the record's `metadata_json` (departments, faculty, contact) too.
 
 **Provenance.** The Academic Calendar describes a course; LORIS describes a term's sections. They
 can disagree (credits, prerequisites), so both are stored with their source and neither silently
@@ -74,6 +97,20 @@ queued -> running -> success | partial_success | failed | cancelled
 | `fresh` | Start from the seeds and fetch everything | Process every record |
 | `update` | Re-check stored pages with conditional requests (ETag / Last-Modified); `304` keeps the stored copy | Process only records flagged as changed (`needs_embedding`, changed source) |
 | `retry` | Re-fetch pages that ended in a retryable error | Re-run only the **failed batches** of the last run |
+
+**Indexing: what to run after a change.**
+
+| What changed | Run |
+| --- | --- |
+| Embedded text of some records (title, content, description…): the import flags them (`needs_embedding`) | `update` |
+| A payload field (added, renamed, or its values backfilled, e.g. `academic_level`): no vector changes | `fresh` with `payload_only=true` |
+| Embedding model, chunking or text templates: every vector changes | `fresh` |
+
+`payload_only=true` rewrites the record fields of each record's existing points (Qdrant set-payload by
+`source_id`) without calling the embedding service: chunk text, `created_at` and `updated_at` stay, so
+it never triggers the stale-vector sweep, and `needs_embedding` is left as it is. Fields that are now
+empty are removed. Run it per source (`/indexing/courses/sync`, `/course-terms/sync`, `/pages/sync`);
+its failed batches are re-run with `mode=retry&payload_only=true`. It is refused with `mode=update`.
 
 How runs stay correct (`application/services/jobs/`):
 
@@ -142,11 +179,16 @@ batching.py`). The GPU peak is about `max_batch_tokens x 30522 x 4 bytes` (float
 
 ### Payload indexes
 
-Ingestion filters on `source_id` for every record, and the sweeps on `embedding_source` and
-`updated_at`. Each is indexed in Qdrant (`FILTERED_PAYLOAD_FIELDS` in `vector_models.py`), so these
-lookups stay fast as the collection grows. `provision` creates missing indexes on new and existing
-collections; a field indexed with a different type stops it. A new filter on another payload field
-must be added to `FILTERED_PAYLOAD_FIELDS`.
+Ingestion filters on `source_id` for every record, the sweeps on `embedding_source` and
+`updated_at`, and retrieval on `academic_level`. Each is indexed in Qdrant (`FILTERED_PAYLOAD_FIELDS`
+in `vector_models.py`), so these lookups stay fast as the collection grows. `provision` creates
+missing indexes on new and existing collections; a field indexed with a different type stops it.
+
+Adding a payload field: add it to the record's vector payload model (`ingestion_types.py`) and its
+`EmbeddingSource.payload()`, add it to `FILTERED_PAYLOAD_FIELDS` if anything filters on it, deploy
+(provision creates the index), then run indexing with `mode=fresh&payload_only=true` for each source
+that carries it. No re-embedding is needed. Creating an index makes Qdrant's optimizer revisit the
+collection (status `yellow` for a while); with ColBERT's HNSW disabled this takes minutes.
 
 ## Document uploads
 

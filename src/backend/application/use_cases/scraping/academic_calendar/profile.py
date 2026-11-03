@@ -14,6 +14,7 @@ from bs4 import BeautifulSoup
 
 from backend.application.services.simple_scraping.service import USER_AGENT
 from backend.domain.entities.scraping import SiteProfile
+from backend.domain.entities.wlu.academic_level import AcademicLevel
 from backend.shared.utils.academic_year import get_current_academic_year
 from backend.shared.utils.hashing import sha256_hash
 
@@ -26,6 +27,18 @@ class AcademicCalendarProfile:
     SEARCH_URL = ROOT_URL + "search.php?s_text=&pg={pg}&cal={cal}&y={y}"
     # The calendar shows this many search results per page (used when it omits "Page x of n").
     RESULTS_PER_PAGE = 100
+    # The `cal` URL parameter names the calendar; the home page lists them as "<year> Undergraduate
+    # Calendar" (cal=1) and "<year> Graduate Calendar" (cal=3). Migration 0006 froze this mapping.
+    CALENDAR_LEVELS = {"1": AcademicLevel.UNDERGRADUATE, "3": AcademicLevel.GRADUATE}
+
+    @classmethod
+    def calendar_param(cls, url: str) -> str | None:
+        return parse_qs(urlparse(url).query).get("cal", [None])[0]
+
+    @classmethod
+    def academic_level(cls, url: str) -> AcademicLevel | None:
+        """The calendar's level for a calendar page URL; None when `cal` is missing or unknown."""
+        return cls.CALENDAR_LEVELS.get(cls.calendar_param(url) or "")
 
     def __init__(self):
         self.allowed_year_params: set[str] = set()

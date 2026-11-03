@@ -59,6 +59,17 @@ class VectorStore(Protocol):
         """Delete points matching `filters` whose `timestamp_field` is earlier than `before`; return how many."""
         ...
 
+    async def set_payload(
+            self,
+            name: str,
+            filters: dict,
+            values: dict[str, Any],
+            remove: list[str],
+    ) -> None:
+        """On every point matching `filters`, set `values` and delete the `remove` keys; vectors and
+        other keys are untouched. Like delete, an empty filter is refused (it would match everything)."""
+        ...
+
 class ManagedVectorStore(VectorStore, Protocol):
     async def get_collection_metadata(self, name: str):
         ...

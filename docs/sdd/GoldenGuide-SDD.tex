@@ -137,7 +137,7 @@
 1.2 & 2026-10-30 & Basleal Abshiro & Staging and production run their own Keycloak with a hosted realm that seeds the first administrator; each environment has its own Compose project name and data volumes; the pre-release database migrations were folded into a single baseline; the API documentation's inline script is allowed by hash in the content security policy. \\
 1.3 & 2026-10-31 & Basleal Abshiro & Multiple machines over Tailscale: each machine's \texttt{tailscale} container is its own private device and forwards that machine's services by name, so a stack can be split by role (data node, application node) with one env file per machine; the \texttt{services} profile groups the shared data stores and Keycloak; env files choose their Compose files and profiles, so commands no longer repeat them; the backend waits for a healthy Keycloak; the IDE workspace is part of the development stack. \\
 1.4 & 2026-11-01 & Basleal Abshiro & React web client replaces the static page (new Web Client chapter and decision D13); stored conversations with follow-up memory, answer snapshots and feedback (tables \texttt{conversations}, \texttt{chat\_messages}, \texttt{message\_feedback}); conversation and feedback endpoints; \texttt{status} stream event; frontend tests; roadmap updated. \\
-1.5 & 2026-11-02 & Basleal Abshiro & ColBERT reorders the dense and sparse candidates instead of searching the whole collection, so its token vectors have no HNSW index (indexing took hours); search filters apply to every candidate search; completed answers are stored before the stream ends and a \texttt{saved} stream event gives the client their message ID, so every answer can be rated (risk R15 closed); the answer prompt repeats the citation rule after the context; the \texttt{sources} event is sent before the answer text. \\
+1.5 & 2026-11-02 & Basleal Abshiro & ColBERT reorders the dense and sparse candidates instead of searching the whole collection, so its token vectors have no HNSW index (indexing took hours); search filters apply to every candidate search; completed answers are stored before the stream ends and a \texttt{saved} stream event gives the client their message ID, so every answer can be rated (risk R15 closed); the answer prompt repeats the citation rule after the context; the \texttt{sources} event is sent before the answer text; Academic Calendar pages are typed by URL first (department pages and faculty sub-pages were stored as faculties, and graduate Public Safety courses as faculty pages), and departments are stored under the lexicon's canonical name; courses and WLU pages carry an \texttt{academic\_level} (migration \texttt{0006}, filled from calendar URLs), also in the vector payload; calendar re-imports update record metadata; indexing runs accept \texttt{payload\_only}, which rewrites the payload of existing vectors without embedding. \\
 \bottomrule
 \end{tabularx}
 
@@ -1191,11 +1191,11 @@ lists every configuration file.
 \begin{tikzpicture}[node distance=10mm and 9mm,
   ent/.style={rectangle split,rectangle split parts=2,draw=lauPurple,font=\scriptsize,
               text width=40mm,align=left,rectangle split part fill={softPurple,white}}]
-  \node[ent] (courses) {\textbf{courses}\nodepart{two}id PK\\academic\_year, subject\_code,\\course\_number, title, description,\\prereq, coreq, exclusions, credits,\\calendar\_url, content\_hash,\\needs\_embedding};
+  \node[ent] (courses) {\textbf{courses}\nodepart{two}id PK\\academic\_year, subject\_code,\\course\_number, academic\_level,\\title, description, prereq, coreq,\\exclusions, credits, calendar\_url,\\content\_hash, needs\_embedding};
   \node[ent,right=of courses] (terms) {\textbf{course\_terms}\nodepart{two}id PK, course\_id FK\\term\_code, crn, section\_code,\\instructional\_method, prereq,\\restrictions, credit\_hours,\\seats, waitlist, needs\_embedding};
   \node[ent,right=of terms,yshift=12mm] (meet) {\textbf{course\_term\_meetings}\nodepart{two}course\_term\_id FK, position\\times, days, building, room,\\start and end dates};
   \node[ent,right=of terms,yshift=-14mm] (fac) {\textbf{course\_term\_faculty}\nodepart{two}course\_term\_id FK, position\\banner\_id, display\_name,\\primary\_indicator};
-  \node[ent,below=12mm of courses] (pages) {\textbf{wlu\_pages}\nodepart{two}id PK\\url, version, site\_name,\\record\_type, title, content,\\content\_hash, needs\_embedding};
+  \node[ent,below=12mm of courses] (pages) {\textbf{wlu\_pages}\nodepart{two}id PK\\url, version, site\_name,\\record\_type, academic\_level,\\title, content, content\_hash,\\needs\_embedding};
   \node[ent,right=of pages] (scrape) {\textbf{scrape\_pages}\nodepart{two}id PK\\url, version, status, http\_status,\\blob\_key, content\_hash, etag,\\retry\_count, needs\_persistence};
   \node[ent,below=12mm of pages] (runs) {\textbf{job\_runs}\nodepart{two}id PK\\job\_name, mode, status,\\started/finished, heartbeat};
   \node[ent,right=of runs] (batches) {\textbf{job\_batches}\nodepart{two}id PK, run\_id FK\\batch\_no, offset, batch\_size,\\status, processed, error};
@@ -1243,6 +1243,11 @@ lists every configuration file.
   \item \textbf{Course versus course term.} \texttt{courses} describes the calendar entry;
         \texttt{course\_terms} a term's sections, which can carry different credits, prerequisites and
         restrictions. Both keep their own copy with their source.
+  \item \textbf{Academic level.} \texttt{courses} and \texttt{wlu\_pages} carry
+        \texttt{academic\_level} (\texttt{undergraduate} or \texttt{graduate}), the Academic Calendar a
+        record comes from. It is \texttt{NULL} for records that apply to every student (tuition,
+        important dates, website pages) and for courses known only from LORIS. A level filter returns
+        that level plus the \texttt{NULL} records. Course terms take the level of their course.
   \item \textbf{Change detection.} \texttt{content\_hash} detects real changes on import;
         \texttt{needs\_embedding} flags records for indexing and stays set when embedding fails.
   \item \textbf{Schema evolution} happens only through Alembic migrations applied by the provision job;
@@ -1259,7 +1264,7 @@ lists every configuration file.
 \toprule
 \textbf{Store} & \textbf{Contents} & \textbf{Failure policy} \\
 \midrule
-Qdrant & One point per chunk: named vectors (dense, sparse, ColBERT) and payload (source, id, URL, title, text). Derived data, rebuildable from PostgreSQL; versioned collections. & Retrieval reports the semantic part as failed; the answer says so \\
+Qdrant & One point per chunk: named vectors (dense, sparse, ColBERT) and payload (source, id, URL, title, academic level, text). Derived data, rebuildable from PostgreSQL; versioned collections. A payload-only indexing run rewrites payload fields without embedding again. & Retrieval reports the semantic part as failed; the answer says so \\
 MinIO & Raw calendar and website HTML (versioned keys), LORIS term extracts, uploaded originals. & Import jobs fail and are retried \\
 Redis & Sessions; single-use OAuth transactions; rate-limit windows; caches for the entity lookup, settings and courses. & Critical state fails closed; caches fall back to PostgreSQL \\
 \bottomrule
@@ -1295,7 +1300,7 @@ All routes are under \texttt{/api/v1}; administrators can browse OpenAPI documen
 \texttt{POST} \code{/admin/sources/academic-calendar/{discover,import}} & sources:collect & Calendar crawl; parse \\
 \texttt{POST} \code{/admin/sources/websites/{discover,import}} & sources:collect & Website crawl; parse \\
 \texttt{POST} \code{/admin/sources/registration/{export,import}} & sources:collect & LORIS download; load \\
-\texttt{POST} \code{/admin/indexing/{courses,course-terms,pages}/sync} & indexing:sync & Build or update vectors \\
+\texttt{POST} \code{/admin/indexing/{courses,course-terms,pages}/sync} & indexing:sync & Build or update vectors; \texttt{payload\_only} rewrites their payload without embedding \\
 \texttt{GET /admin/jobs/\{run\_id\}} & jobs:read & Job status, batches, outcome \\
 \texttt{GET /health/live} & Public & Liveness \\
 \bottomrule

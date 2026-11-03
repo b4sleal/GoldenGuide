@@ -3,6 +3,7 @@
 Links in extracted text become one-based @@n@@ placeholders pointing into the page's external_links,
 resolved later when the text is shown (AcademicLinkResolver / the chat link resolver).
 """
+import copy
 import re
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup, Tag
@@ -63,7 +64,13 @@ def parse_page_content(html_content: str, url: str) -> tuple[str, str, list[str]
 
     h1 = root.find("h1")
     if h1:
-        title = normalize_text(h1.get_text(" ", strip=True))
+        # Department headings add their parent unit below the name:
+        # <h1>Arabic (Lang/Lit)<br/><span class="subtitle">Department of Languages and Literatures</span></h1>.
+        # The title is the name only; the subtitle stays in the page text.
+        heading = copy.copy(h1)
+        for subtitle in heading.select(".subtitle"):
+            subtitle.decompose()
+        title = normalize_text(heading.get_text(" ", strip=True))
     else:
         title = normalize_text(soup.title.get_text(" ", strip=True) if soup.title else "")
 

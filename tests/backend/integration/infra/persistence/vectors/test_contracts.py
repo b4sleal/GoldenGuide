@@ -227,6 +227,22 @@ async def test_stale_cleanup_is_strictly_before_cutoff_and_scoped_to_owner(
     }
 
 
+async def test_payload_change_touches_only_the_matching_records_payload(vector_store):
+    store, name = vector_store
+    await store.upsert(name, [point("owned"), point("foreign", source="other")])
+
+    await store.set_payload(name, {"source_id": "owned"}, {"academic_level": "graduate"}, ["url"])
+
+    owned = (await store.search_by_filter(name, {"source_id": "owned"}))[0].payload
+    foreign = (await store.search_by_filter(name, {"source_id": "other"}))[0].payload
+    assert owned["academic_level"] == "graduate" and "url" not in owned
+    assert owned["text"] == "owned"  # Other keys stay.
+    assert "academic_level" not in foreign and foreign["url"] == "https://example.edu/foreign"
+    # The vectors are untouched: the record is still found by the same vector.
+    hits = await store.search(name, dense_vector=[1.0, 0.0], filters={"source_id": "owned"}, score_threshold=0.9)
+    assert [hit.content for hit in hits] == ["owned"]
+
+
 async def test_search_requires_a_vector(vector_store):
     store, name = vector_store
     with pytest.raises(ValueError):

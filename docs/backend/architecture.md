@@ -82,8 +82,8 @@ runs elsewhere. CPU and GPU builds are mutually exclusive dependency groups in `
 
 | Store | Contents | Failure policy |
 | --- | --- | --- |
-| **PostgreSQL** | `courses` (Academic Calendar), `course_terms` + `course_term_meetings` + `course_term_faculty` (LORIS sections), `wlu_pages` (programs, glossary, website pages), `scrape_pages` (crawl frontier), `documents`, `settings` (runtime defaults, versioned), `job_runs` / `job_batches` | Authoritative. Schema changes only through Alembic migrations. |
-| **Qdrant** | Derived vectors per collection layout (`dense`, `sparse`, `multi`, `multi_sparse`), each point carrying source id, URL, title and chunk text | Rebuildable from PostgreSQL. Collection versions must match configuration or provisioning stops. |
+| **PostgreSQL** | `courses` (Academic Calendar), `course_terms` + `course_term_meetings` + `course_term_faculty` (LORIS sections), `wlu_pages` (calendar faculties, departments, programs and glossary; website pages); courses and calendar pages carry an `academic_level` (undergraduate / graduate), `scrape_pages` (crawl frontier), `documents`, `settings` (runtime defaults, versioned), `job_runs` / `job_batches` | Authoritative. Schema changes only through Alembic migrations. |
+| **Qdrant** | Derived vectors per collection layout (`dense`, `sparse`, `multi`, `multi_sparse`), each point carrying source id, URL, title, academic level (when the record has one) and chunk text | Rebuildable from PostgreSQL. Collection versions must match configuration or provisioning stops. |
 | **MinIO** | Raw crawled HTML, LORIS extracts, uploaded original files | Source of truth for re-parsing without re-crawling. |
 | **Redis** | Sessions, in-flight OAuth logins (single use), rate-limit windows; caches for the entity lookup, settings and courses | Session/OAuth/rate-limit failures **fail closed**. Cache misses or outages fall back to PostgreSQL. |
 

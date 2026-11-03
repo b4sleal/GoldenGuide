@@ -65,10 +65,13 @@ On a machine without an NVIDIA GPU, set `COMPOSE_PROFILES=all,embedding-cpu` in 
 ## Roll back
 
 - **Code:** check out the previous commit and run the same `up -d --build backend`.
-- **Database:** only the baseline migration exists today, so there is no earlier schema version to step back
-  to. Treat a database rollback as a **restore from backup**. Once later migrations exist, each one has a
-  `downgrade()`, and CI tests the full downgrade and upgrade round trip. Run
-  `uv run alembic downgrade -1` from a developer machine against the production database, after a backup.
+- **Database:** every migration has a `downgrade()`, and the test suite runs the full downgrade and
+  upgrade round trip. To undo the latest one, take a backup, then run `uv run alembic downgrade -1`
+  from a developer machine against the production database (`downgrade <revision>`, e.g. `0005`, to
+  step back to a specific one), and deploy the code that matches that schema: the API refuses to
+  serve a schema that is not its own. Check the current revision with
+  `SELECT version_num FROM alembic_version;`. Downgrading `0006` drops `academic_level`, which is
+  derived from calendar URLs, so no data is lost. For anything worse, **restore from backup**.
 
 ## Backups and restore
 
@@ -77,7 +80,7 @@ On a machine without an NVIDIA GPU, set `COMPOSE_PROFILES=all,embedding-cpu` in 
 | PostgreSQL | Courses, course terms, pages, uploaded-document records, runtime settings, job history | **Yes**: this is the authoritative data | Restore the backup |
 | MinIO | Raw crawled HTML, LORIS extracts, **uploaded original files** | **Yes** for uploads, which cannot be re-fetched. Crawled sources can be collected again | Restore, or re-run collection |
 | Keycloak data | Users and credentials in the hosted realm | **Yes** | Recreate the users (the first admin is re-seeded on an empty volume) |
-| Qdrant | Vectors derived from PostgreSQL | Optional | Re-run indexing (`/admin/indexing/.../sync` with mode `fresh`) |
+| Qdrant | Vectors derived from PostgreSQL | Optional | Re-run indexing (`/admin/indexing/.../sync` with mode `fresh`). Missing only a payload field: `fresh` with `payload_only=true` |
 | Redis | Sessions, rate limits, caches | No | People sign in again |
 
 **Back up PostgreSQL** (the user is `DB__POSTGRES__USER` from `.env.prod`):

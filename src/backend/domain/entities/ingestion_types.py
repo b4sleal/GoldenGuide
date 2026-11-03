@@ -2,6 +2,8 @@
 from enum import StrEnum
 from pydantic import BaseModel
 
+from backend.domain.entities.wlu.academic_level import AcademicLevel
+
 
 class DocMimeType(StrEnum):
     PDF = "application/pdf"
@@ -53,6 +55,7 @@ class CourseVectorPayload(KnowledgeVectorPayload):
     notes: str | None = None
     credits: str | None = None
     calendar_url: str | None = None
+    academic_level: AcademicLevel | None = None  # Filtered on (VectorPayloadField.ACADEMIC_LEVEL).
 
 
 class CourseTermVectorPayload(KnowledgeVectorPayload):
@@ -78,6 +81,7 @@ class CourseTermVectorPayload(KnowledgeVectorPayload):
 class WluPageVectorPayload(KnowledgeVectorPayload):
     url: str
     site_name: str
+    academic_level: AcademicLevel | None = None  # Filtered on (VectorPayloadField.ACADEMIC_LEVEL).
 
 
 class DocumentVectorPayload(KnowledgeVectorPayload):

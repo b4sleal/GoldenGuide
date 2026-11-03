@@ -4,6 +4,8 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from backend.domain.entities.wlu.academic_level import AcademicLevel
+
 
 class FrozenCourse(BaseModel):
     model_config = ConfigDict(frozen=True)
@@ -17,6 +19,7 @@ class CourseField(StrEnum):
     SUBJECT_CODE = "subject_code"
     COURSE_NUMBER = "course_number"
     CAMPUS = "campus"
+    ACADEMIC_LEVEL = "academic_level"
     TITLE = "title"
     CALENDAR_URL = "calendar_url"
     DESCRIPTION = "description"
@@ -50,6 +53,8 @@ class CourseBase(FrozenCourse):
         CourseField.COURSE_NUMBER,
     )
 
+    # Fields that shape the embedded text: a change re-flags the course for embedding. Payload-only
+    # fields (academic_level) are refreshed by a payload_only indexing run instead.
     EMBED_FIELDS: ClassVar[tuple[CourseField, ...]] = (
         CourseField.SUBJECT,
         CourseField.TITLE,
@@ -69,6 +74,8 @@ class CourseBase(FrozenCourse):
     course_number: str
     institution: str
     campus: str
+    # The calendar the course is listed in; None when it is known only from LORIS.
+    academic_level: AcademicLevel | None = None
     calendar_url: str | None = None
     content_hash: str | None = None
     needs_embedding: bool = True
@@ -107,6 +114,8 @@ class CourseUpdate(FrozenCourse):
     credit_max: float | None = None
     credit_unit: str | None = None
     exclusions: str | None = None
+    academic_level: AcademicLevel | None = None
+    metadata_json: CourseMetadata | None = None
     content_hash: str | None = None
     needs_embedding: bool | None = None
 

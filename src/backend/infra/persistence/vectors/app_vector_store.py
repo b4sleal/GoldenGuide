@@ -4,6 +4,7 @@ Errors propagate unlogged; callers log them with record context (ingestion) or f
 """
 import time
 from datetime import datetime
+from typing import Any
 
 import structlog
 
@@ -86,6 +87,15 @@ class AppVectorStore:
         log = logger.info if deleted else logger.debug
         log("qdrant_stale_points_deleted", collection=name, filters=filters, before=before.isoformat(), deleted=deleted)
         return deleted
+
+    async def set_payload(
+            self,
+            name: str,
+            filters: dict,
+            values: dict[str, Any],
+            remove: list[str],
+    ) -> None:
+        await self.vector_store.set_payload(name=name, filters=filters, values=values, remove=remove)
 
     async def search_by_filter(
             self,

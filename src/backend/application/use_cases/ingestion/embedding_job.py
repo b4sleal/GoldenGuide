@@ -1,5 +1,6 @@
 """Embedding as a tracked batch job: fresh embeds every record, update only flagged ones, retry re-runs
-the failed batches of the last run.
+the failed batches of the last run. With payload_only, the same batches rewrite each record's vector
+payload instead (no embedding, flags unchanged), for a new or changed payload field.
 
 Batches page through the whole table in id order and the needs_embedding check happens here, not in
 SQL, so a batch's offset always covers the same rows: retry replays exactly what failed even after
@@ -67,9 +68,11 @@ class EmbeddingJob:
     def job_name(self) -> str:
         return self.job_name_for(self.source.name)
 
-    async def run(self, *, run_id: int, mode: JobMode, batch_size: int, max_concurrent_batches: int) -> dict:
+    async def run(
+            self, *, run_id: int, mode: JobMode, batch_size: int, max_concurrent_batches: int, payload_only: bool = False,
+    ) -> dict:
         started_at = datetime.now(timezone.utc)
-        executor = EmbeddingExecutor(self.school_db, self.knowledge_service, self.source, mode)
+        executor = EmbeddingExecutor(self.school_db, self.knowledge_service, self.source, mode, payload_only)
         runner = BatchJobRunner(
             app_db=self.app_db,
             job_name=self.job_name,
@@ -80,7 +83,7 @@ class EmbeddingJob:
             batch_size=batch_size,
             max_concurrent_batches=max_concurrent_batches,
             mode=mode,
-            metadata={"source": self.source.name.value},
+            metadata={"source": self.source.name.value, "payload_only": payload_only},
         )
         output = result.model_dump(mode="json")
         logger.info(
@@ -88,6 +91,7 @@ class EmbeddingJob:
             source=self.source.name.value,
             run_id=run_id,
             mode=mode.value,
+            payload_only=payload_only,
             status=result.status.value,
             records_total=result.total_rows,
             records_embedded=executor.embedded_total,
@@ -99,7 +103,8 @@ class EmbeddingJob:
         # A fully successful fresh run re-embedded every record, so any of this source's vectors it did
         # not touch belong to records that no longer exist (deleted or re-imported under a new id).
         # A run with failures sweeps nothing: an untouched vector may be a record that failed.
-        if mode is JobMode.FRESH and result.status == JobStatus.SUCCESS:
+        # A payload-only run embeds nothing, so every vector would look stale: it never sweeps.
+        if mode is JobMode.FRESH and not payload_only and result.status == JobStatus.SUCCESS:
             output["stale_vectors_deleted"] = await self.knowledge_service.delete_stale(self.source.name, started_at)
         return output
 
@@ -107,11 +112,15 @@ class EmbeddingJob:
 class EmbeddingExecutor:
     """Embeds one batch of records; keeps running totals so progress can be logged across batches."""
 
-    def __init__(self, school_db: SchoolDB, knowledge_service: KnowledgeIngestor, source: EmbeddingSource, mode: JobMode):
+    def __init__(
+            self, school_db: SchoolDB, knowledge_service: KnowledgeIngestor, source: EmbeddingSource, mode: JobMode,
+            payload_only: bool = False,
+    ):
         self.school_db = school_db
         self.knowledge_service = knowledge_service
         self.source = source
         self.mode = mode
+        self.payload_only = payload_only
         # Batches run concurrently on one event loop, so plain counters are safe (no await between updates).
         self.records_total: int | None = None
         self.records_done = 0
@@ -143,8 +152,12 @@ class EmbeddingExecutor:
         async with self.school_db.start() as repos:
             records = await self.source.fetch(repos, offset=batch.offset, limit=batch.batch_size)
 
-        # Fresh embeds every record; update and retry only those still flagged.
-        pending = records if self.mode is JobMode.FRESH else [r for r in records if self.source.needs_embedding(r)]
+        # Fresh embeds every record; update and retry only those still flagged. A payload-only run
+        # refreshes every record: needs_embedding says nothing about the payload.
+        if self.mode is JobMode.FRESH or self.payload_only:
+            pending = records
+        else:
+            pending = [r for r in records if self.source.needs_embedding(r)]
 
         embedded: list[PrimaryKey] = []
         failed: list[PrimaryKey] = []
@@ -154,7 +167,10 @@ class EmbeddingExecutor:
         for record in pending:
             payload = self.source.payload(record)
             try:
-                await self.knowledge_service.ingest(payload)
+                if self.payload_only:
+                    await self.knowledge_service.refresh_payload(payload)
+                else:
+                    await self.knowledge_service.ingest(payload)
             except Exception as exc:
                 logger.warning(
                     "embedding_record_failed",
@@ -169,12 +185,15 @@ class EmbeddingExecutor:
                 continue
             embedded.append(self.source.record_id(record))
 
-        async with self.school_db.start() as repos:
-            if embedded:
-                await self.source.set_needs_embedding(repos, embedded, False)
-            # A fresh run may fail a record that was not flagged: flag it so retry and update find it.
-            if failed:
-                await self.source.set_needs_embedding(repos, failed, True)
+        # Embedding flags describe the vectors, which a payload-only run leaves as they were; its failed
+        # batches are found again by retry with payload_only.
+        if not self.payload_only:
+            async with self.school_db.start() as repos:
+                if embedded:
+                    await self.source.set_needs_embedding(repos, embedded, False)
+                # A fresh run may fail a record that was not flagged: flag it so retry and update find it.
+                if failed:
+                    await self.source.set_needs_embedding(repos, failed, True)
 
         self._log_progress(batch, fetched=len(records), embedded=len(embedded), failed=len(failed))
 

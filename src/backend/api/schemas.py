@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from backend.domain.entities.conversations import FeedbackRating, FeedbackReason
 from backend.domain.entities.jobs import JobMode, JobStatus, JsonObject
@@ -177,6 +177,18 @@ class IngestionRequest(BaseModel):
         le=20,
         description="Batches embedded concurrently. Kept at 1 by default: the GPU embedding service is the bottleneck.",
     )
+    payload_only: bool = Field(
+        default=False,
+        description="Rewrite the payload of every record's existing vectors without embedding, after a new or "
+                    "changed payload field (e.g. academic_level). Use with mode fresh, or retry for its failed batches.",
+    )
+
+    @model_validator(mode="after")
+    def _payload_only_needs_fresh_or_retry(self) -> "IngestionRequest":
+        # update selects records by needs_embedding, which says nothing about their payload.
+        if self.payload_only and self.mode is JobMode.UPDATE:
+            raise ValueError("payload_only runs with mode fresh (every record) or retry (failed batches)")
+        return self
 
 class RegistrationIngestRequest(BaseModel):
     term_code: str = Field(

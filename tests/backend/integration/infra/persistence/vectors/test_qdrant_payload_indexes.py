@@ -29,6 +29,7 @@ async def test_existing_points_get_every_filtered_index_once_and_stay_searchable
         VectorPayloadField.SOURCE_ID.value: PayloadSchemaType.KEYWORD,
         VectorPayloadField.EMBEDDING_SOURCE.value: PayloadSchemaType.KEYWORD,
         VectorPayloadField.UPDATED_AT.value: PayloadSchemaType.DATETIME,
+        VectorPayloadField.ACADEMIC_LEVEL.value: PayloadSchemaType.KEYWORD,
     }
     hits = await app_store.search_by_filter(name, {VectorPayloadField.SOURCE_ID: "owned"})
     assert len(hits) == 1

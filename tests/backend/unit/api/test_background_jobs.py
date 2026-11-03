@@ -62,6 +62,30 @@ def test_all_job_endpoints_submit_their_request_without_executing_work(app, path
     assert submitted["request"].key == key
 
 
+@pytest.mark.parametrize(
+    "query,accepted",
+    [
+        ("mode=fresh&payload_only=true", True),
+        ("mode=retry&payload_only=true", True),
+        # update picks records by needs_embedding, which says nothing about their payload.
+        ("mode=update&payload_only=true", False),
+    ],
+)
+def test_payload_only_indexing_is_submitted_only_with_fresh_or_retry(app, query, accepted):
+    app.dependency_overrides[get_principal] = lambda: Principal(subject="admin", roles=frozenset({Role.ADMIN}))
+    submission = SimpleNamespace(submit=AsyncMock(return_value=JobRunQueued(run_id=9, job_name="embedding:courses")))
+    override(app, ingestion.ingest_courses, "submission", submission)
+    with TestClient(app) as client:
+        response = client.post(f"/api/v1/admin/indexing/courses/sync?{query}", headers={"Origin": app.state.site_origin})
+
+    if accepted:
+        assert response.status_code == 202, response.text
+        assert submission.submit.await_args.kwargs["request"].payload_only is True
+    else:
+        assert response.status_code == 422
+        submission.submit.assert_not_awaited()
+
+
 @pytest.mark.parametrize("state", list(JobStatus))
 def test_status_reports_outcome_without_exposing_internal_metadata(app, state):
     app.dependency_overrides[get_principal] = lambda: Principal(

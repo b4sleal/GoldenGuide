@@ -47,6 +47,8 @@ browser must be same-origin.
 
 Poll `status_url` until the status is final (`success`, `partial_success`, `failed`, `cancelled`).
 Most accept a `mode` of `fresh`, `update` or `retry` ([ingestion](ingestion.md#jobs-modes-and-retries)).
+The `indexing` endpoints also take `payload_only=true` (with `fresh` or `retry`; `422` with `update`):
+it rewrites the payload of existing vectors without embedding, e.g. after adding a payload field.
 A second submission of the same job while one is running is `409`.
 
 ## Health

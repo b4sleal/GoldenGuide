@@ -47,6 +47,8 @@ class Course(SchoolBaseTable, TimestampMixin):
     subject_code: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     course_number: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     campus: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    # undergraduate / graduate (AcademicLevel): the calendar listing the course; NULL if LORIS-only.
+    academic_level: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
 
     # Stable course identity + additional definitions
     title: Mapped[str | None] = mapped_column(String(512), nullable=True)                # Introduction to Anthropology
@@ -222,6 +224,8 @@ class WluPage(SchoolBaseTable, TimestampMixin):
 
     record_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     # faculty / department / program / glossary / page (AcademicCalendarType)
+    # undergraduate / graduate (AcademicLevel) for calendar pages; NULL: applies to every student
+    academic_level: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
 
     title: Mapped[str] = mapped_column(String(512), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)

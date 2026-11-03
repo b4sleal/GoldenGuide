@@ -5,6 +5,8 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict
 
+from backend.domain.entities.wlu.academic_level import AcademicLevel
+
 # Academic Calendar cross-listings whose whole body points elsewhere, e.g. "Program description link
 # in Computer Science section." or "Refer to the Co-operative Education section." The body must START
 # with the reference, so short real entries that merely end with "Refer to ..." are kept.
@@ -34,6 +36,7 @@ class WluPageField(StrEnum):
     VERSION = "version"
     SITE_NAME = "site_name"
     RECORD_TYPE = "record_type"
+    ACADEMIC_LEVEL = "academic_level"
     TITLE = "title"
     CONTENT = "content"
     METADATA_JSON = "metadata_json"
@@ -53,6 +56,8 @@ class WluPageBase(FrozenSchool):
         WluPageField.VERSION,
         WluPageField.URL,
     )
+    # Fields that shape the embedded text: a change re-flags the page for embedding. Payload-only
+    # fields (academic_level) are refreshed by a payload_only indexing run instead.
     EMBED_FIELDS: ClassVar[tuple[WluPageField, ...]] = (
         WluPageField.SITE_NAME,
         WluPageField.RECORD_TYPE,
@@ -65,6 +70,8 @@ class WluPageBase(FrozenSchool):
     url: str
     content_hash: str | None = None
     record_type: AcademicCalendarType
+    # The calendar a page belongs to; None for pages that apply to every student.
+    academic_level: AcademicLevel | None = None
     title: str
     content: str
     needs_embedding: bool = True
@@ -94,6 +101,8 @@ class WluPageUpdate(FrozenSchool):
     needs_embedding: bool | None = None
     site_name: str | None = None
     record_type: AcademicCalendarType | None = None
+    academic_level: AcademicLevel | None = None
+    metadata_json: WluPageMetadata | None = None
 
 class WluPageRead(WluPageBase):
     id: int

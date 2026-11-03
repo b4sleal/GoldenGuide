@@ -96,7 +96,7 @@ catalog:
           canonical: Computer Science
           course_code: CP
           aliases:
-            - cs
+            - cp
             - comp sci
             - computer sci
             - Computer Science (CP/PC Dept)

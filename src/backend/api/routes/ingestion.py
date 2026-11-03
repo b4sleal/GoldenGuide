@@ -36,6 +36,7 @@ async def _submit(
         mode=body.mode,
         request=IndexingParams(
             key=key, mode=body.mode, batch_size=body.batch_size, max_concurrent_batches=body.max_concurrent_batches,
+            payload_only=body.payload_only,
         ),
     )
     return accepted(request, queued)

@@ -110,6 +110,7 @@ def build_job_handlers(
         async def handler(run_id: int, p: IndexingParams) -> object:
             return await job().run(
                 run_id=run_id, mode=p.mode, batch_size=p.batch_size, max_concurrent_batches=p.max_concurrent_batches,
+                payload_only=p.payload_only,
             )
         return _expecting(IndexingParams, handler)
 

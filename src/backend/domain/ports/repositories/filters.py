@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from backend.domain.entities.conversations import MessageStatus
 from backend.domain.entities.jobs import JobBatchStatus, JobStatus
 from backend.domain.entities.scraping import ScrapeStatus
+from backend.domain.entities.wlu.academic_level import AcademicLevel
 from backend.domain.entities.wlu.loris_registration import MeetingRoom
 from backend.domain.entities.wlu.wlu_pages import AcademicCalendarType
 
@@ -76,7 +77,10 @@ class CourseFilter(BaseModel):
     corequisite_of: str | None = None
     excludes_course: str | None = None
 
-    levels: list[int] | None = None
+    levels: list[int] | None = None  # Course-number year levels (100, 200, ...), not AcademicLevel.
+    academic_level: AcademicLevel | None = Field(
+        default=None, description="Courses of this level, plus courses with no level (LORIS-only)",
+    )
 
 class WluPageFilter(BaseModel):
     """Pure domain DTO for filtering academic records."""
@@ -88,6 +92,9 @@ class WluPageFilter(BaseModel):
     # Allows querying a single type OR multiple types
     record_type: AcademicCalendarType | None = Field(default=None, description="e.g., glossary, page")
     record_types: list[AcademicCalendarType] | None = Field(default=None, description="Generates an IN clause")
+    academic_level: AcademicLevel | None = Field(
+        default=None, description="Pages of this level, plus pages that are not level-specific (NULL)",
+    )
 
     # Partial matches
     title_contains: str | None = Field(default=None)

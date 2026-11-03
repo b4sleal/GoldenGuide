@@ -74,5 +74,10 @@ class WluLexiconResolver:
     def resolve_faculty(self, raw_faculty: str | None) -> str | None:
         return self.resolve(LexiconEntityType.FACULTY, raw_faculty)
 
+    def department_name(self, raw_department: str) -> str:
+        """The lexicon's canonical department name ("Arabic (Lang/Lit)" -> "Arabic"), or the name as
+        given when the lexicon does not list it (calendar departments change more often than the lexicon)."""
+        return self.resolve(LexiconEntityType.DEPARTMENT, raw_department) or raw_department
+
     def resolve_registration_header(self, header: str) -> str | None:
         return self.resolve(LexiconEntityType.REGISTRATION_NOTES, header)

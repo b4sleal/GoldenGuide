@@ -79,4 +79,5 @@ def test_every_field_ingestion_and_sweeps_filter_on_is_indexed():
         VectorPayloadField.SOURCE_ID: PayloadIndexKind.KEYWORD,
         VectorPayloadField.EMBEDDING_SOURCE: PayloadIndexKind.KEYWORD,
         VectorPayloadField.UPDATED_AT: PayloadIndexKind.DATETIME,
+        VectorPayloadField.ACADEMIC_LEVEL: PayloadIndexKind.KEYWORD,
     }

@@ -2,6 +2,7 @@
 
 import pytest
 
+from backend.domain.entities.wlu.academic_level import AcademicLevel
 from backend.domain.entities.wlu.course import (
     CourseCreate,
     CourseMetadata,
@@ -77,8 +78,12 @@ async def test_insert_only_import_cannot_overwrite_calendar_data(courses):
         ({"prereq": "CP103"}, True),
         ({"calendar_url": "https://example.edu/revised"}, False),
         ({"content_hash": "new-source-hash"}, False),
+        # Payload-only: stored, but refreshed by a payload_only run, not a re-embed.
+        ({"academic_level": AcademicLevel.GRADUATE}, False),
+        # Metadata is the calendar's to update, but is not embedded.
+        ({"metadata_json": CourseMetadata(departments=["Arabic"])}, False),
     ],
-    ids=["unchanged", "title", "text-removed", "prerequisite", "url-only", "hash-only"],
+    ids=["unchanged", "title", "text-removed", "prerequisite", "url-only", "hash-only", "level", "metadata"],
 )
 async def test_only_embedding_content_changes_invalidate_an_indexed_course(
     courses, changes, dirty
@@ -115,6 +120,20 @@ async def test_failed_transaction_rolls_back_persisted_changes(courses, session)
     stored = await read(courses)
     assert stored.id == course_id
     assert stored.title == "Introduction to Programming"
+
+
+async def test_level_filter_keeps_that_level_and_courses_without_one(courses):
+    await courses.upsert_courses([
+        course(course_number="104", academic_level=AcademicLevel.UNDERGRADUATE),
+        course(course_number="600", academic_level=AcademicLevel.GRADUATE),
+        course(course_number="999"),  # LORIS-only: no calendar level.
+    ])
+
+    found = await courses.fetch_courses(
+        CoursePageParams(), CourseFilter(subject_code="CP", academic_level=AcademicLevel.UNDERGRADUATE),
+    )
+
+    assert sorted(found_course.course_number for found_course in found) == ["104", "999"]
 
 
 async def test_empty_imports_are_safe_noops(courses):

@@ -13,6 +13,7 @@ class VectorPayloadField(StrEnum):
     EMBEDDING_SOURCE = "embedding_source"  # Which embedding job owns the vector (VectorSource).
     CREATED_AT = "created_at"              # First embedded (UTC ISO 8601), kept across re-embeds.
     UPDATED_AT = "updated_at"              # Last embedded (UTC ISO 8601).
+    ACADEMIC_LEVEL = "academic_level"      # undergraduate / graduate (AcademicLevel); absent: every student.
 
 
 class PayloadIndexKind(StrEnum):
@@ -27,6 +28,7 @@ FILTERED_PAYLOAD_FIELDS: dict[VectorPayloadField, PayloadIndexKind] = {
     VectorPayloadField.SOURCE_ID: PayloadIndexKind.KEYWORD,
     VectorPayloadField.EMBEDDING_SOURCE: PayloadIndexKind.KEYWORD,
     VectorPayloadField.UPDATED_AT: PayloadIndexKind.DATETIME,
+    VectorPayloadField.ACADEMIC_LEVEL: PayloadIndexKind.KEYWORD,
 }
 
 # Generic metadata payload stored with vectors

@@ -13,6 +13,7 @@
 | **Course** | A course as the Academic Calendar describes it, for one academic year (for example `CP264`). Stable |
 | **Course term** | One term's offering of a course, as LORIS lists it: a section with its own CRN, meetings and instructors. It can differ from the calendar entry. The two are never merged |
 | **Academic year** | `YYYY/YYYY`, for example `2026/2027` |
+| **Academic level** | Undergraduate or graduate: which Academic Calendar a course or calendar page belongs to (each year has one of each). Pages that apply to every student, such as tuition or important dates, have none |
 
 ## How GoldenGuide answers
 

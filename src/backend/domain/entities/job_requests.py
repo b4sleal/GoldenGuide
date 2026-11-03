@@ -83,11 +83,16 @@ type IndexingKey = Literal[JobKey.COURSE_INDEXING, JobKey.COURSE_TERM_INDEXING, 
 
 
 class IndexingParams(FrozenJobParams):
-    """Embedding sync of one source; `key` says which (courses, course terms or pages)."""
+    """Embedding sync of one source; `key` says which (courses, course terms or pages).
+
+    `payload_only`: rewrite the payload of every record's existing vectors without embedding (for a
+    new or changed payload field). Runs with mode fresh (every record) or retry (failed batches).
+    """
     key: IndexingKey
     mode: JobMode
     batch_size: int
     max_concurrent_batches: int
+    payload_only: bool = False  # Default keeps runs stored before this field readable.
 
 
 type JobRequest = Annotated[

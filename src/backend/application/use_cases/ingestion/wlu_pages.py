@@ -51,6 +51,7 @@ class WluPageEmbeddingSource:
             source_type=KnowledgeSourceType.WLU_PAGE,
             site_name=page.site_name,
             record_type=page.record_type,
+            academic_level=page.academic_level,
         )
 
     async def set_needs_embedding(self, repos, ids: list[PrimaryKey], value: bool) -> None:

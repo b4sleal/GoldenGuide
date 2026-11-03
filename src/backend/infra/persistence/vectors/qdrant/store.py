@@ -4,6 +4,7 @@ filter-based deletes.
 """
 from collections.abc import Mapping
 from datetime import datetime
+from typing import Any
 
 import structlog
 
@@ -289,6 +290,19 @@ class QDrantStore:
             await self.client.delete(collection_name=name, points_selector=q_filter, wait=True)
         return stale
 
+    async def set_payload(
+            self,
+            name: str,
+            filters: dict,
+            values: dict[str, Any],
+            remove: list[str],
+    ) -> None:
+        q_filter = self._required_filter(filters)
+        if values:
+            await self.client.set_payload(collection_name=name, payload=values, points=q_filter, wait=True)
+        if remove:
+            await self.client.delete_payload(collection_name=name, keys=remove, points=q_filter, wait=True)
+
     # --------------------------------------------------
     # Scroll
     # --------------------------------------------------
@@ -318,10 +332,11 @@ class QDrantStore:
     # --------------------------------------------------
 
     def _required_filter(self, filters: dict | None) -> Filter:
-        """The filter for a delete. An empty one (or only None values) would match the whole collection."""
+        """The filter for a delete or payload change. An empty one (or only None values) would match the
+        whole collection."""
         q_filter = self._build_filter(filters)
         if q_filter is None:
-            raise ValueError(f"Refusing to delete without a filter (got {filters!r})")
+            raise ValueError(f"Refusing to change points without a filter (got {filters!r})")
         return q_filter
 
     def _build_filter(self, filters: dict | None) -> Filter | None:

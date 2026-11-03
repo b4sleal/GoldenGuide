@@ -7,6 +7,7 @@ from backend.domain.ports.repositories.filters import CourseFilter, WluPageFilte
 from sqlalchemy import Select, tuple_, or_
 
 from backend.domain.entities.wlu.academic_calendar import Weekday
+from backend.domain.entities.wlu.academic_level import AcademicLevel
 from backend.domain.entities.wlu.loris_registration import MeetingRoom
 from backend.infra.persistence.db.school.school_tables import (
     Course,
@@ -30,6 +31,11 @@ def course_reference_pattern(code: str) -> str:
         rf"{subject}[[:space:]]*{number}"
         rf"([^[:alnum:]]|$)"
     )
+
+def for_level(column, level: AcademicLevel):
+    """Rows of `level`, plus rows without one: those apply to every student (tuition, dates)."""
+    return or_(column == level.value, column.is_(None))
+
 
 class CourseFilterTranslator:
     @staticmethod
@@ -100,6 +106,9 @@ class CourseFilterTranslator:
                 ])
             )
 
+        if filters.academic_level is not None:
+            stmt = stmt.where(for_level(Course.academic_level, filters.academic_level))
+
         return stmt
 
 
@@ -125,6 +134,9 @@ class WluPageFilterTranslator:
 
         if filters.record_types is not None:
             stmt = stmt.where(WluPage.record_type.in_([rt.value for rt in filters.record_types]))
+
+        if filters.academic_level is not None:
+            stmt = stmt.where(for_level(WluPage.academic_level, filters.academic_level))
 
         if filters.title_contains is not None:
             stmt = stmt.where(WluPage.title.ilike(f"%{filters.title_contains}%"))

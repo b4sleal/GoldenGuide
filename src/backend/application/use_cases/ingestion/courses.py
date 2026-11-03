@@ -44,6 +44,7 @@ class CourseEmbeddingSource:
             notes=course.notes,
             credits=", ".join(f"{k}: {v}" for k, v in credits.items() if v is not None) or None,
             calendar_url=course.calendar_url,
+            academic_level=course.academic_level,
         )
 
     async def set_needs_embedding(self, repos, ids: list[PrimaryKey], value: bool) -> None:
